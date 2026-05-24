@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtCurrency, fmtDateTime, fmtTime } from '../lib/format'
 import './HistoryTab.css'
 
@@ -28,13 +28,7 @@ function nowJstYearMonth(): { year: number; month: number } {
   }
 }
 
-export default function HistoryTab({
-  api,
-  castName,
-}: {
-  api: AkariApi
-  castName: string
-}) {
+export default function HistoryTab({ castName }: { castName: string }) {
   const initial = nowJstYearMonth()
   const [year, setYear] = useState(initial.year)
   const [month, setMonth] = useState(initial.month)
@@ -46,11 +40,11 @@ export default function HistoryTab({
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await api.call<HistorySession[]>('getHistory', { year, month })
+    const r = await db.call<HistorySession[]>('getHistory', { year, month })
     setLoading(false)
     if (r.ok) setList(r.data || [])
     else setErr(r.error)
-  }, [api, year, month])
+  }, [year, month])
 
   useEffect(() => {
     load()

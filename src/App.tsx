@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react'
-import { AkariApi } from './lib/akariApi'
+import type { Session } from '@supabase/supabase-js'
+import { supabase } from './lib/supabase'
+import { db, getMyCast, unbindMyCast } from './lib/db'
 import { applyTheme, getStoredTheme, type ThemeName } from './lib/theme'
-import PinScreen from './components/PinScreen'
+import MagicLinkScreen from './components/MagicLinkScreen'
+import CastSelectionScreen from './components/CastSelectionScreen'
 import SessionTab from './components/SessionTab'
 import ReservationTab from './components/ReservationTab'
 import ListTab from './components/ListTab'
 import RevenueTab from './components/RevenueTab'
 import SettingsTab from './components/SettingsTab'
 import './App.css'
-
-const API_URL = import.meta.env.VITE_AKARI_API_URL as string | undefined
 
 type TabId = 'session' | 'reservation' | 'list' | 'revenue' | 'settings'
 
@@ -25,65 +26,82 @@ const TABS: Array<{ id: TabId; label: string }> = [
 applyTheme(getStoredTheme())
 
 export default function App() {
-  if (!API_URL) return <ConfigError />
-  return <AppInner apiUrl={API_URL} />
-}
+  const [session, setSession] = useState<Session | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [castName, setCastName] = useState<string | null>(null)
+  const [castLoading, setCastLoading] = useState(false)
 
-function ConfigError() {
-  return (
-    <div className="error-box">
-      <h2>VITE_AKARI_API_URL が未設定です</h2>
-      <p>プロジェクトルートに <code>.env.local</code> を作って以下を追加してください:</p>
-      <pre>VITE_AKARI_API_URL=https://script.google.com/macros/s/.../exec</pre>
-    </div>
-  )
-}
-
-function AppInner({ apiUrl }: { apiUrl: string }) {
-  const [api] = useState(() => new AkariApi(apiUrl))
-  const [authed, setAuthed] = useState(api.isAuthenticated)
-  const [castName, setCastName] = useState(api.currentCastName)
-
-  // ログイン状態のときはサーバー保存のテーマも読み込んで適用
   useEffect(() => {
-    if (!authed || !castName) return
+    supabase.auth.getSession().then(({ data }) => {
+      setSession(data.session)
+      setAuthLoading(false)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session)
+      if (!session) setCastName(null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  // ログイン後: バインド済みのキャストを取得
+  useEffect(() => {
+    if (!session) {
+      setCastName(null)
+      return
+    }
+    setCastLoading(true)
+    getMyCast()
+      .then((name) => setCastName(name))
+      .catch(() => setCastName(null))
+      .finally(() => setCastLoading(false))
+  }, [session])
+
+  // ログイン後: 保存テーマを適用
+  useEffect(() => {
+    if (!session) return
     (async () => {
-      const r = await api.call<{ theme?: ThemeName }>('getUserSettings', castName)
+      const r = await db.call<{ theme?: ThemeName }>('getUserSettings')
       if (r.ok && r.data?.theme) applyTheme(r.data.theme)
     })()
-  }, [api, authed, castName])
+  }, [session])
 
-  if (!authed) {
+  if (authLoading || (session && castLoading)) {
     return (
-      <PinScreen
-        api={api}
-        onLogin={(name) => {
-          setCastName(name)
-          setAuthed(true)
-        }}
-      />
+      <div className="ml-overlay">
+        <div className="ml-title">対話店[灯]</div>
+        <p className="muted">読み込み中...</p>
+      </div>
     )
   }
+
+  if (!session) return <MagicLinkScreen />
+
+  if (!castName) {
+    return <CastSelectionScreen onBound={(name) => setCastName(name)} />
+  }
+
   return (
     <Dashboard
-      api={api}
       castName={castName}
-      onLogout={() => {
-        api.logout()
-        setAuthed(false)
+      onLogout={async () => {
+        await supabase.auth.signOut()
+      }}
+      onChangeCast={async () => {
+        await unbindMyCast()
+        setCastName(null)
       }}
     />
   )
 }
 
 function Dashboard({
-  api,
   castName,
   onLogout,
+  onChangeCast,
 }: {
-  api: AkariApi
   castName: string
   onLogout: () => void
+  onChangeCast: () => void
 }) {
   const [tab, setTab] = useState<TabId>('session')
 
@@ -91,7 +109,10 @@ function Dashboard({
     <div className="screen">
       <header className="topbar">
         <h2>対話店[灯] / {castName}</h2>
-        <button className="btn-secondary" onClick={onLogout}>ログアウト</button>
+        <div style={{ display: 'flex', gap: 6 }}>
+          <button className="btn-secondary" onClick={onChangeCast} title="別のキャストとして使う">↔</button>
+          <button className="btn-secondary" onClick={onLogout}>ログアウト</button>
+        </div>
       </header>
       <nav className="tab-nav">
         {TABS.map((t) => (
@@ -104,11 +125,11 @@ function Dashboard({
           </button>
         ))}
       </nav>
-      {tab === 'session' && <SessionTab api={api} castName={castName} />}
-      {tab === 'reservation' && <ReservationTab api={api} castName={castName} />}
-      {tab === 'list' && <ListTab api={api} castName={castName} />}
-      {tab === 'revenue' && <RevenueTab api={api} />}
-      {tab === 'settings' && <SettingsTab api={api} castName={castName} />}
+      {tab === 'session' && <SessionTab castName={castName} />}
+      {tab === 'reservation' && <ReservationTab castName={castName} />}
+      {tab === 'list' && <ListTab castName={castName} />}
+      {tab === 'revenue' && <RevenueTab />}
+      {tab === 'settings' && <SettingsTab castName={castName} />}
     </div>
   )
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtCurrency, fmtDateTime } from '../lib/format'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -78,10 +78,8 @@ const emptyForm = (castName: string): FormState => ({
 })
 
 export default function ReservationTab({
-  api,
   castName,
 }: {
-  api: AkariApi
   castName: string
 }) {
   const [list, setList] = useState<Reservation[]>([])
@@ -103,11 +101,11 @@ export default function ReservationTab({
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await api.call<Reservation[]>('getReservations')
+    const r = await db.call<Reservation[]>('getReservations')
     setLoading(false)
     if (r.ok) setList(r.data || [])
     else setErr(r.error)
-  }, [api])
+  }, [])
 
   useEffect(() => {
     load()
@@ -116,13 +114,13 @@ export default function ReservationTab({
   useEffect(() => {
     (async () => {
       const [rCast, rPrice] = await Promise.all([
-        api.call<{ casts: string[]; rooms: string[] }>('getCastsAndRooms'),
-        api.call<PricingEntry[]>('getPricing'),
+        db.call<{ casts: string[]; rooms: string[] }>('getCastsAndRooms'),
+        db.call<PricingEntry[]>('getPricing'),
       ])
       if (rCast.ok) { setCasts(rCast.data.casts); setRooms(rCast.data.rooms) }
       if (rPrice.ok) setPricing(rPrice.data)
     })()
-  }, [api])
+  }, [])
 
   const filtered = list.filter((r) => {
     if (filter !== 'all' && r.予約種別 !== filter) return false
@@ -169,8 +167,8 @@ export default function ReservationTab({
       note: form.note.trim(),
     }
     const r = form.reservation_id
-      ? await api.call('updateReservation', payload)
-      : await api.call('addReservation', payload)
+      ? await db.call('updateReservation', payload)
+      : await db.call('addReservation', payload)
     setBusy(false)
     if (r.ok) {
       toast.show(form.reservation_id ? '予約を更新しました' : '予約を追加しました')
@@ -184,7 +182,7 @@ export default function ReservationTab({
   async function confirmDelete() {
     if (!deleting) return
     setBusy(true)
-    const r = await api.call('deleteReservation', deleting.reservation_id)
+    const r = await db.call('deleteReservation', deleting.reservation_id)
     setBusy(false)
     setDeleting(null)
     if (r.ok) {

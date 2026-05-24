@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtCurrency } from '../lib/format'
 import { applyTheme, getStoredTheme, type ThemeName } from '../lib/theme'
 import { useToast } from './Toast'
@@ -22,13 +22,7 @@ const THEMES: Array<{ id: ThemeName; label: string; swatch: string }> = [
   { id: 'midnight', label: 'ミッドナイト', swatch: '#080404' },
 ]
 
-export default function SettingsTab({
-  api,
-  castName,
-}: {
-  api: AkariApi
-  castName: string
-}) {
+export default function SettingsTab({ castName }: { castName: string }) {
   const [theme, setTheme] = useState<ThemeName>(getStoredTheme())
   const [busy, setBusy] = useState(false)
   const [pricing, setPricing] = useState<PricingEntry[]>([])
@@ -39,8 +33,8 @@ export default function SettingsTab({
   useEffect(() => {
     (async () => {
       const [rPrice, rCast] = await Promise.all([
-        api.call<PricingEntry[]>('getPricing'),
-        api.call<{ casts: string[]; rooms: string[]; roomsData: RoomData[] }>('getCastsAndRooms'),
+        db.call<PricingEntry[]>('getPricing'),
+        db.call<{ casts: string[]; rooms: string[]; roomsData: RoomData[] }>('getCastsAndRooms'),
       ])
       if (rPrice.ok) setPricing(rPrice.data)
       if (rCast.ok) {
@@ -48,7 +42,7 @@ export default function SettingsTab({
         setRooms(rCast.data.roomsData || rCast.data.rooms.map((n) => ({ name: n, vip: 0 })))
       }
     })()
-  }, [api])
+  }, [])
 
   function chooseTheme(t: ThemeName) {
     setTheme(t)
@@ -57,7 +51,8 @@ export default function SettingsTab({
 
   async function save() {
     setBusy(true)
-    const r = await api.call('saveUserSettings', castName, { theme })
+    // db.call('saveUserSettings', settings) — Supabase版は castName 不要（auth.uid()で識別）
+    const r = await db.call('saveUserSettings', { theme })
     setBusy(false)
     if (r.ok) toast.show('設定を保存しました')
     else toast.show((r as { error: string }).error || '保存に失敗しました', 'err')
@@ -116,7 +111,7 @@ export default function SettingsTab({
         </div>
 
         <p className="muted small" style={{ marginTop: 12 }}>
-          ※ 料金・キャスト・ルームの変更は Google スプレッドシートを直接編集してください。
+          ※ 料金・キャスト・ルームの変更は Supabase ダッシュボードから直接編集してください（管理画面は今後実装予定）。
         </p>
       </div>
 

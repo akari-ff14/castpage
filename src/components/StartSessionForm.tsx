@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtCurrency } from '../lib/format'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -22,7 +22,6 @@ interface BlMatch {
 }
 
 interface Props {
-  api: AkariApi
   castName: string
   onStarted: () => void
 }
@@ -37,7 +36,7 @@ const PRESET_OPTIONS = [
   { value: 6, label: '3時間（6口）' },
 ]
 
-export default function StartSessionForm({ api, castName, onStarted }: Props) {
+export default function StartSessionForm({ castName, onStarted }: Props) {
   const [rooms, setRooms] = useState<RoomData[]>([])
   const [pricing, setPricing] = useState<PricingEntry[]>([])
   const [room, setRoom] = useState('')
@@ -51,13 +50,13 @@ export default function StartSessionForm({ api, castName, onStarted }: Props) {
   useEffect(() => {
     (async () => {
       const [rRoom, rPrice] = await Promise.all([
-        api.call<{ casts: string[]; rooms: string[]; roomsData: RoomData[] }>('getCastsAndRooms'),
-        api.call<PricingEntry[]>('getPricing'),
+        db.call<{ casts: string[]; rooms: string[]; roomsData: RoomData[] }>('getCastsAndRooms'),
+        db.call<PricingEntry[]>('getPricing'),
       ])
       if (rRoom.ok && rRoom.data.roomsData) setRooms(rRoom.data.roomsData)
       if (rPrice.ok) setPricing(rPrice.data)
     })()
-  }, [api])
+  }, [])
 
   const roomInfo = rooms.find((r) => r.name === room)
   const serviceType = roomInfo?.vip === 1 ? 'vip' : 'normal'
@@ -98,7 +97,7 @@ export default function StartSessionForm({ api, castName, onStarted }: Props) {
     try {
       // 1) ルーム空き確認
       // checkRoomAvailability は GAS 側でフラット形式 ({ok, available, usedBy}) を返す
-      const rRoom = await api.call('checkRoomAvailability', room) as
+      const rRoom = await db.call('checkRoomAvailability', room) as
         | { ok: true; available: boolean; usedBy?: string }
         | { ok: false; error: string }
       if (!rRoom.ok) {
@@ -111,7 +110,7 @@ export default function StartSessionForm({ api, castName, onStarted }: Props) {
       }
       // 2) ブラックリストチェック（複数顧客で並列）
       const blResults = await Promise.all(
-        filledCustomerNames.map((name) => api.call<BlMatch[]>('checkBlacklist', name)),
+        filledCustomerNames.map((name) => db.call<BlMatch[]>('checkBlacklist', name)),
       )
       const allMatches: BlMatch[] = []
       const seen = new Set<string>()
@@ -142,7 +141,7 @@ export default function StartSessionForm({ api, castName, onStarted }: Props) {
     setBlWarning(null)
     setBusy(true)
     try {
-      const r = await api.call('startSession', {
+      const r = await db.call('startSession', {
         castName,
         room,
         customerNames: filledCustomerNames,

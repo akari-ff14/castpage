@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtCurrency } from '../lib/format'
 import './RevenueTab.css'
 
@@ -20,7 +20,7 @@ interface RevenueStatus {
   busStart: string
 }
 
-export default function RevenueTab({ api }: { api: AkariApi }) {
+export default function RevenueTab() {
   const [data, setData] = useState<RevenueStatus | null>(null)
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -28,11 +28,11 @@ export default function RevenueTab({ api }: { api: AkariApi }) {
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await api.call<RevenueStatus>('getRevenueStatus')
+    const r = await db.call<RevenueStatus>('getRevenueStatus')
     setLoading(false)
     if (r.ok) setData(r.data)
     else setErr(r.error)
-  }, [api])
+  }, [])
 
   useEffect(() => {
     load()

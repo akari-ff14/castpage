@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './BlacklistSubtab.css'
@@ -10,7 +10,7 @@ interface BlEntry {
   note?: string
 }
 
-export default function BlacklistSubtab({ api }: { api: AkariApi }) {
+export default function BlacklistSubtab() {
   const [list, setList] = useState<BlEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -21,18 +21,18 @@ export default function BlacklistSubtab({ api }: { api: AkariApi }) {
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await api.call<BlEntry[]>('getBlacklist')
+    const r = await db.call<BlEntry[]>('getBlacklist')
     setLoading(false)
     if (r.ok) setList(r.data || [])
     else setErr(r.error)
-  }, [api])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
   async function confirmRemove() {
     if (!removing) return
     setBusy(true)
-    const r = await api.call('removeFromBlacklist', removing.name)
+    const r = await db.call('removeFromBlacklist', removing.name)
     setBusy(false)
     setRemoving(null)
     if (r.ok) {

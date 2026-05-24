@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtDate } from '../lib/format'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -22,7 +22,7 @@ interface CustomerGroup {
 
 type SortKey = 'last_visit' | 'visits_desc' | 'visits_asc'
 
-export default function CustomerSubtab({ api }: { api: AkariApi }) {
+export default function CustomerSubtab() {
   const [all, setAll] = useState<CustomerRecord[]>([])
   const [casts, setCasts] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -39,20 +39,20 @@ export default function CustomerSubtab({ api }: { api: AkariApi }) {
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await api.call<CustomerRecord[]>('getCustomers')
+    const r = await db.call<CustomerRecord[]>('getCustomers')
     setLoading(false)
     if (r.ok) setAll(r.data || [])
     else setErr(r.error)
-  }, [api])
+  }, [])
 
   useEffect(() => { load() }, [load])
 
   useEffect(() => {
     (async () => {
-      const r = await api.call<{ casts: string[] }>('getCastsAndRooms')
+      const r = await db.call<{ casts: string[] }>('getCastsAndRooms')
       if (r.ok) setCasts(r.data.casts)
     })()
-  }, [api])
+  }, [])
 
   const groups = useMemo<CustomerGroup[]>(() => {
     const lowerSearch = search.toLowerCase()
@@ -91,7 +91,7 @@ export default function CustomerSubtab({ api }: { api: AkariApi }) {
   async function confirmRegBl() {
     if (!regBl) return
     setBusy(true)
-    const r = await api.call('addToBlacklist', {
+    const r = await db.call('addToBlacklist', {
       name: regBl,
       reason: blReason.trim(),
       note: blNote.trim(),

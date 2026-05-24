@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
+import { db } from '../lib/db'
 import { fmtCurrency, fmtTime } from '../lib/format'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -36,12 +36,11 @@ const REMINDER_THRESHOLD_MS = 5 * 60 * 1000
 const POLL_INTERVAL_MS = 60 * 1000
 
 interface Props {
-  api: AkariApi
   castName: string
   onChanged?: () => void  // セッション開始/終了時に親に通知（StartSessionForm再表示用）
 }
 
-export default function ActiveSession({ api, castName, onChanged }: Props) {
+export default function ActiveSession({ castName, onChanged }: Props) {
   const [session, setSession] = useState<ActiveSessionData | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -55,7 +54,7 @@ export default function ActiveSession({ api, castName, onChanged }: Props) {
 
   const reload = useCallback(async () => {
     setLoading(true)
-    const r = await api.call<ActiveSessionData | null>('getActiveSession', castName)
+    const r = await db.call<ActiveSessionData | null>('getActiveSession', castName)
     setLoading(false)
     if (r.ok) {
       const prevId = session?.session_id
@@ -65,7 +64,7 @@ export default function ActiveSession({ api, castName, onChanged }: Props) {
       if (prevId !== newId) onChanged?.()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [api, castName])
+  }, [castName])
 
   useEffect(() => {
     reload()
@@ -112,7 +111,7 @@ export default function ActiveSession({ api, castName, onChanged }: Props) {
     if (!session) return
     await doAction(
       'extend',
-      () => api.call<ActiveSessionData>('extendSession', session.session_id),
+      () => db.call<ActiveSessionData>('extendSession', session.session_id),
       '30分延長しました',
     )
   }
@@ -121,7 +120,7 @@ export default function ActiveSession({ api, castName, onChanged }: Props) {
     if (!session) return
     await doAction(
       'option',
-      () => api.call<ActiveSessionData>('addOption', session.session_id),
+      () => db.call<ActiveSessionData>('addOption', session.session_id),
       'オプションを追加しました',
     )
   }
@@ -129,7 +128,7 @@ export default function ActiveSession({ api, castName, onChanged }: Props) {
   async function onFinishConfirm() {
     if (!session) return
     setBusy(true)
-    const r = await api.call<{ breakdown: FinishBreakdown }>('finishSession', {
+    const r = await db.call<{ breakdown: FinishBreakdown }>('finishSession', {
       sessionId: session.session_id,
       note: finishNote.trim(),
     })

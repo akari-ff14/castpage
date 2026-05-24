@@ -1,5 +1,4 @@
 import { useState } from 'react'
-import type { AkariApi } from '../lib/akariApi'
 import HistoryTab from './HistoryTab'
 import CustomerSubtab from './CustomerSubtab'
 import BlacklistSubtab from './BlacklistSubtab'
@@ -12,13 +11,7 @@ const SUBTABS: Array<{ id: SubtabId; label: string }> = [
   { id: 'blacklist', label: 'BL' },
 ]
 
-export default function ListTab({
-  api,
-  castName,
-}: {
-  api: AkariApi
-  castName: string
-}) {
+export default function ListTab({ castName }: { castName: string }) {
   const [sub, setSub] = useState<SubtabId>('history')
 
   return (
@@ -34,9 +27,9 @@ export default function ListTab({
           </button>
         ))}
       </nav>
-      {sub === 'history' && <HistoryTab api={api} castName={castName} />}
-      {sub === 'customer' && <CustomerSubtab api={api} />}
-      {sub === 'blacklist' && <BlacklistSubtab api={api} />}
+      {sub === 'history' && <HistoryTab castName={castName} />}
+      {sub === 'customer' && <CustomerSubtab />}
+      {sub === 'blacklist' && <BlacklistSubtab />}
     </div>
   )
 }
