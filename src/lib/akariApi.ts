@@ -48,15 +48,39 @@ export class AkariApi {
   }
 
   async call<T = unknown>(fn: string, ...args: unknown[]): Promise<ApiResult<T>> {
-    const res = await fetch(this.url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-      body: JSON.stringify({ fn, args, token: this.token }),
-      redirect: 'follow',
-    })
-    const json = (await res.json()) as ApiResult<T>
-    if (!json.ok && json.code === 'AUTH') this.logout()
-    return json
+    // 60秒タイムアウト（GASのスプレッドシート書き込みは遅いことがある）
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 60_000)
+    try {
+      const res = await fetch(this.url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ fn, args, token: this.token }),
+        redirect: 'follow',
+        signal: ctrl.signal,
+      })
+      let json: ApiResult<T>
+      try {
+        json = (await res.json()) as ApiResult<T>
+      } catch (e) {
+        // GASがHTMLエラーページ等を返したケース
+        const text = await res.text().catch(() => '')
+        return {
+          ok: false,
+          error: `サーバーから不正なレスポンス (HTTP ${res.status})${text ? ': ' + text.slice(0, 200) : ''}`,
+        }
+      }
+      if (!json.ok && (json as { code?: string }).code === 'AUTH') this.logout()
+      return json
+    } catch (e) {
+      const err = e as Error
+      if (err.name === 'AbortError') {
+        return { ok: false, error: '通信タイムアウト（60秒）' }
+      }
+      return { ok: false, error: `通信エラー: ${err.message || String(err)}` }
+    } finally {
+      clearTimeout(timer)
+    }
   }
 
   async login(pin: string): Promise<ApiResult<LoginPayload>> {

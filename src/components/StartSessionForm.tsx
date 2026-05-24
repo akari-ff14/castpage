@@ -95,58 +95,74 @@ export default function StartSessionForm({ api, castName, onStarted }: Props) {
 
   async function attemptStart() {
     setBusy(true)
-    // 1) ルーム空き確認
-    const rRoom = await api.call<{ available: boolean; usedBy?: string }>('checkRoomAvailability', room)
-    if (rRoom.ok && !rRoom.data.available) {
-      toast.show(`「${room}」は現在 ${rRoom.data.usedBy || '他のキャスト'} が使用中です`, 'err')
-      setBusy(false)
-      return
-    }
-    // 2) ブラックリストチェック（複数顧客で並列）
-    const blResults = await Promise.all(
-      filledCustomerNames.map((name) => api.call<BlMatch[]>('checkBlacklist', name)),
-    )
-    const allMatches: BlMatch[] = []
-    const seen = new Set<string>()
-    for (const r of blResults) {
-      if (r.ok && Array.isArray(r.data)) {
-        for (const m of r.data) {
-          if (!seen.has(m.name)) {
-            seen.add(m.name)
-            allMatches.push(m)
+    try {
+      // 1) ルーム空き確認
+      // checkRoomAvailability は GAS 側でフラット形式 ({ok, available, usedBy}) を返す
+      const rRoom = await api.call('checkRoomAvailability', room) as
+        | { ok: true; available: boolean; usedBy?: string }
+        | { ok: false; error: string }
+      if (!rRoom.ok) {
+        toast.show(rRoom.error || 'ルーム確認に失敗しました', 'err')
+        return
+      }
+      if (!rRoom.available) {
+        toast.show(`「${room}」は現在 ${rRoom.usedBy || '他のキャスト'} が使用中です`, 'err')
+        return
+      }
+      // 2) ブラックリストチェック（複数顧客で並列）
+      const blResults = await Promise.all(
+        filledCustomerNames.map((name) => api.call<BlMatch[]>('checkBlacklist', name)),
+      )
+      const allMatches: BlMatch[] = []
+      const seen = new Set<string>()
+      for (const r of blResults) {
+        if (r.ok && Array.isArray(r.data)) {
+          for (const m of r.data) {
+            if (!seen.has(m.name)) {
+              seen.add(m.name)
+              allMatches.push(m)
+            }
           }
         }
       }
-    }
-    if (allMatches.length) {
-      setBlWarning(allMatches)
+      if (allMatches.length) {
+        setBlWarning(allMatches)
+        return
+      }
+      // 3) 開始
+      await callStart()
+    } catch (e) {
+      toast.show(`予期せぬエラー: ${(e as Error).message || String(e)}`, 'err')
+    } finally {
       setBusy(false)
-      return
     }
-    // 3) 開始
-    await callStart()
   }
 
   async function callStart() {
     setBlWarning(null)
     setBusy(true)
-    const r = await api.call('startSession', {
-      castName,
-      room,
-      customerNames: filledCustomerNames,
-      note: note.trim(),
-      serviceType,
-      presetSlots: presetSlots || 1,
-    })
-    setBusy(false)
-    if (r.ok) {
-      toast.show('応対を開始しました')
-      setCustomerNames([''])
-      setNote('')
-      setPresetSlots(0)
-      onStarted()
-    } else {
-      toast.show((r as { error: string }).error || '開始に失敗しました', 'err')
+    try {
+      const r = await api.call('startSession', {
+        castName,
+        room,
+        customerNames: filledCustomerNames,
+        note: note.trim(),
+        serviceType,
+        presetSlots: presetSlots || 1,
+      })
+      if (r.ok) {
+        toast.show('応対を開始しました')
+        setCustomerNames([''])
+        setNote('')
+        setPresetSlots(0)
+        onStarted()
+      } else {
+        toast.show((r as { error: string }).error || '開始に失敗しました', 'err')
+      }
+    } catch (e) {
+      toast.show(`予期せぬエラー: ${(e as Error).message || String(e)}`, 'err')
+    } finally {
+      setBusy(false)
     }
   }
 

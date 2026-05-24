@@ -1,0 +1,40 @@
+.bl-subtab .filter-card {
+  padding: 8px 12px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.bl-card {
+  background: var(--surface);
+  border: 1px solid var(--red-border);
+  border-left: 3px solid var(--red);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.bl-card-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.bl-card-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--red);
+  margin-bottom: 4px;
+}
+
+.bl-card-reason {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.bl-card-note {
+  font-size: 12px;
+  color: var(--text-dim);
+}

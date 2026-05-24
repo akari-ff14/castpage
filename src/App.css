@@ -27,6 +27,62 @@
   color-scheme: dark;
 }
 
+/* ── テーマ: ライト ── */
+[data-theme="light"] {
+  --bg: #f8f2ec;
+  --bg2: #ede4d8;
+  --surface: #ffffff;
+  --surface2: #f5ede4;
+  --border: #d8c8b8;
+  --border2: #c0a890;
+  --gold: #a07020;
+  --teal: #c03028;
+  --teal-bg: #fae8e6;
+  --teal-border: #e0a090;
+  --purple: #a07820;
+  --purple-bg: #faf0d8;
+  --purple-border: #d8b870;
+  --green: #1a8040;
+  --green-bg: #e0f4e8;
+  --green-border: #9dd4b0;
+  --red: #c03020;
+  --red-bg: #fae8e6;
+  --red-border: #e0a090;
+  --accent: #8b2020;
+  --text: #1a0c08;
+  --text-dim: #5a3828;
+  --text-muted: #8a6858;
+  color-scheme: light;
+}
+
+/* ── テーマ: ミッドナイト ── */
+[data-theme="midnight"] {
+  --bg: #080404;
+  --bg2: #0c0404;
+  --surface: #100606;
+  --surface2: #160808;
+  --border: #200a0a;
+  --border2: #301010;
+  --gold: #f0c860;
+  --teal: #ff6050;
+  --teal-bg: #200808;
+  --teal-border: #601818;
+  --purple: #e8b030;
+  --purple-bg: #1e1200;
+  --purple-border: #604000;
+  --green: #50e8a0;
+  --green-bg: #081e18;
+  --green-border: #1a5040;
+  --red: #f08070;
+  --red-bg: #200808;
+  --red-border: #602010;
+  --accent: #a02828;
+  --text: #f8e8d8;
+  --text-dim: #a07860;
+  --text-muted: #604838;
+  color-scheme: dark;
+}
+
 body {
   margin: 0;
   background: var(--bg);
@@ -97,6 +153,45 @@ body {
   background: var(--teal-bg);
   color: var(--teal);
   font-weight: 600;
+}
+
+/* ── サブタブ ── */
+.subtab-nav {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.subtab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  color: var(--text-dim);
+  padding: 10px 8px;
+  font-size: 14px;
+  cursor: pointer;
+  position: relative;
+  transition: color 0.15s;
+}
+
+.subtab-btn:hover:not(.active) {
+  color: var(--text);
+}
+
+.subtab-btn.active {
+  color: var(--teal);
+  font-weight: 600;
+}
+
+.subtab-btn.active::after {
+  content: '';
+  position: absolute;
+  bottom: -1px;
+  left: 15%;
+  right: 15%;
+  height: 2px;
+  background: var(--teal);
+  border-radius: 2px 2px 0 0;
 }
 
 /* ── カード ── */
