@@ -1,12 +1,18 @@
 :root {
   --bg: #0f0808;
+  --bg2: #120808;
   --surface: #1a0c0c;
+  --surface2: #200e0e;
   --border: #2e1010;
+  --border2: #481818;
   --gold: #e8c060;
   --teal: #e05040;
+  --teal-bg: #2a0808;
+  --teal-border: #5a1010;
   --red: #e07060;
   --text: #f0e4d8;
   --text-dim: #8a6a5a;
+  --text-muted: #4a3028;
   color-scheme: dark;
 }
 
