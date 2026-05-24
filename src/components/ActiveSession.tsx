@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AkariApi } from '../lib/akariApi'
+import { fmtCurrency, fmtTime } from '../lib/format'
+import Modal from './Modal'
+import { useToast } from './Toast'
 import './ActiveSession.css'
 
 export interface ActiveSessionData {
@@ -29,49 +32,39 @@ interface FinishBreakdown {
   optionCount: number
 }
 
-const REMINDER_THRESHOLD_MS = 5 * 60 * 1000  // 終了5分前
+const REMINDER_THRESHOLD_MS = 5 * 60 * 1000
 const POLL_INTERVAL_MS = 60 * 1000
 
-const fmtCurrency = (n: number | undefined): string =>
-  n == null ? '—' : '¥' + Number(n).toLocaleString('ja-JP')
-
-const fmtTime = (iso: string | undefined): string => {
-  if (!iso) return '—'
-  const d = new Date(iso)
-  if (isNaN(d.getTime())) return '—'
-  return d.toLocaleTimeString('ja-JP', {
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Asia/Tokyo',
-  })
-}
-
-export default function ActiveSession({
-  api,
-  castName,
-}: {
+interface Props {
   api: AkariApi
   castName: string
-}) {
+  onChanged?: () => void  // セッション開始/終了時に親に通知（StartSessionForm再表示用）
+}
+
+export default function ActiveSession({ api, castName, onChanged }: Props) {
   const [session, setSession] = useState<ActiveSessionData | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
-  const [toast, setToast] = useState<{ msg: string; kind: 'ok' | 'err' } | null>(null)
   const [finishOpen, setFinishOpen] = useState(false)
   const [finishNote, setFinishNote] = useState('')
   const [breakdown, setBreakdown] = useState<FinishBreakdown | null>(null)
   const [reminderOpen, setReminderOpen] = useState(false)
-  const [_tick, setTick] = useState(0)  // 1秒ごとに再描画させるための値
-  const reminderShownRef = useRef<string | null>(null)  // session_idごとに1回だけ
+  const [_tick, setTick] = useState(0)
+  const reminderShownRef = useRef<string | null>(null)
+  const toast = useToast()
 
   const reload = useCallback(async () => {
     setLoading(true)
     const r = await api.call<ActiveSessionData | null>('getActiveSession', castName)
     setLoading(false)
     if (r.ok) {
+      const prevId = session?.session_id
+      const newId = r.data?.session_id
       setSession(r.data)
       if (!r.data) reminderShownRef.current = null
+      if (prevId !== newId) onChanged?.()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [api, castName])
 
   useEffect(() => {
@@ -80,14 +73,12 @@ export default function ActiveSession({
     return () => clearInterval(t)
   }, [reload])
 
-  // タイマー：1秒ごとに再描画してリマインダー閾値をチェック
   useEffect(() => {
     if (!session?.対応終了時間) return
     const t = setInterval(() => setTick((x) => x + 1), 1000)
     return () => clearInterval(t)
   }, [session?.対応終了時間])
 
-  // リマインダー：セッション中、終了予定の5分前に1回だけ表示
   useEffect(() => {
     if (!session) return
     const endMs = new Date(session.対応終了時間).getTime()
@@ -98,11 +89,6 @@ export default function ActiveSession({
       setReminderOpen(true)
     }
   })
-
-  function showToast(msg: string, kind: 'ok' | 'err' = 'ok') {
-    setToast({ msg, kind })
-    setTimeout(() => setToast(null), 2500)
-  }
 
   async function doAction(
     label: string,
@@ -115,10 +101,10 @@ export default function ActiveSession({
     if (r.ok) {
       if (r.data) setSession(r.data)
       else reload()
-      showToast(successMsg)
+      toast.show(successMsg)
       if (label === 'extend') reminderShownRef.current = null
     } else {
-      showToast(r.error || `${label}に失敗しました`, 'err')
+      toast.show(r.error || `${label}に失敗しました`, 'err')
     }
   }
 
@@ -154,25 +140,18 @@ export default function ActiveSession({
       setSession(null)
       reminderShownRef.current = null
       if (r.data?.breakdown) setBreakdown(r.data.breakdown)
-      else showToast('応対を終了しました')
+      else toast.show('応対を終了しました')
+      onChanged?.()
     } else {
-      showToast(r.error || '終了に失敗しました', 'err')
+      toast.show(r.error || '終了に失敗しました', 'err')
     }
   }
 
   if (loading && !session) {
-    return <div className="card"><p>読み込み中...</p></div>
+    return <div className="card"><p className="muted">読み込み中...</p></div>
   }
   if (!session) {
-    return (
-      <div className="card no-session">
-        <span className="no-session-icon">📋</span>
-        <p>接客中のセッションはありません</p>
-        <button className="btn-secondary" onClick={reload} disabled={loading}>
-          {loading ? '...' : '再読み込み'}
-        </button>
-      </div>
-    )
+    return null  // セッション無しの表示は親（SessionTab）に任せる
   }
 
   const endMs = new Date(session.対応終了時間).getTime()
@@ -278,9 +257,7 @@ export default function ActiveSession({
         </Modal>
       )}
 
-      {toast && (
-        <div className={`toast toast-${toast.kind}`}>{toast.msg}</div>
-      )}
+      {toast.element}
     </>
   )
 }
@@ -298,16 +275,6 @@ function Field({
     <div>
       <div className="session-field-label">{label}</div>
       <div className={`session-field-value ${className || ''}`}>{value}</div>
-    </div>
-  )
-}
-
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
-  return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-        {children}
-      </div>
     </div>
   )
 }

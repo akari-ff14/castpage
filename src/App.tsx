@@ -1,10 +1,22 @@
 import { useState } from 'react'
 import { AkariApi } from './lib/akariApi'
 import PinScreen from './components/PinScreen'
-import ActiveSession from './components/ActiveSession'
+import SessionTab from './components/SessionTab'
+import HistoryTab from './components/HistoryTab'
+import RevenueTab from './components/RevenueTab'
+import ReservationTab from './components/ReservationTab'
 import './App.css'
 
 const API_URL = import.meta.env.VITE_AKARI_API_URL as string | undefined
+
+type TabId = 'session' | 'reservation' | 'history' | 'revenue'
+
+const TABS: Array<{ id: TabId; label: string }> = [
+  { id: 'session', label: '接客' },
+  { id: 'reservation', label: '予約' },
+  { id: 'history', label: '履歴' },
+  { id: 'revenue', label: '売上' },
+]
 
 export default function App() {
   if (!API_URL) return <ConfigError />
@@ -58,13 +70,29 @@ function Dashboard({
   castName: string
   onLogout: () => void
 }) {
+  const [tab, setTab] = useState<TabId>('session')
+
   return (
     <div className="screen">
       <header className="topbar">
-        <h2>こんにちは、{castName} さん</h2>
+        <h2>対話店[灯] / {castName}</h2>
         <button className="btn-secondary" onClick={onLogout}>ログアウト</button>
       </header>
-      <ActiveSession api={api} castName={castName} />
+      <nav className="tab-nav">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={`tab-btn ${tab === t.id ? 'active' : ''}`}
+            onClick={() => setTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+      {tab === 'session' && <SessionTab api={api} castName={castName} />}
+      {tab === 'reservation' && <ReservationTab api={api} castName={castName} />}
+      {tab === 'history' && <HistoryTab api={api} castName={castName} />}
+      {tab === 'revenue' && <RevenueTab api={api} />}
     </div>
   )
 }

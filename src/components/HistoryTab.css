@@ -1,0 +1,70 @@
+.filter-card {
+  padding: 12px;
+}
+
+.filter-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.btn-pill {
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border2);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.btn-pill.active {
+  background: var(--teal-bg);
+  color: var(--teal);
+  border-color: var(--teal-border);
+  font-weight: 600;
+}
+
+.btn-pill + .btn-secondary {
+  margin-left: auto;
+}
+
+.history-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--teal-border);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 10px;
+}
+
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.history-revenue {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--green);
+}
+
+.history-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+  padding: 3px 0;
+}
+
+.history-row > span:first-child {
+  flex-shrink: 0;
+}
+
+.history-row > span:last-child {
+  text-align: right;
+}
