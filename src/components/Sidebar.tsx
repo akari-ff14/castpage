@@ -12,6 +12,7 @@ import {
   Close,
   LogOut,
   Swap,
+  Crown,
 } from '../icons'
 import './Sidebar.css'
 
@@ -23,6 +24,7 @@ export type RouteId =
   | 'customer'
   | 'blacklist'
   | 'revenue'
+  | 'chest'
   | 'admin'
   | 'settings'
 
@@ -41,6 +43,7 @@ const MAIN_NAV: NavItem[] = [
   { id: 'customer', label: '顧客', icon: Users },
   { id: 'blacklist', label: 'ブラックリスト', icon: UserX },
   { id: 'revenue', label: '売上', icon: TrendingUp },
+  { id: 'chest', label: 'カンチェ', icon: Crown },
   { id: 'admin', label: '管理', icon: Wrench, adminOnly: true },
 ]
 

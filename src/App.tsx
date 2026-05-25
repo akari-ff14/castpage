@@ -14,6 +14,7 @@ import HistoryTab from './components/HistoryTab'
 import CustomerSubtab from './components/CustomerSubtab'
 import BlacklistSubtab from './components/BlacklistSubtab'
 import RevenueTab from './components/RevenueTab'
+import CompanyChestTab from './components/CompanyChestTab'
 import SettingsTab from './components/SettingsTab'
 import AdminTab from './components/AdminTab'
 import { Menu } from './icons'
@@ -168,6 +169,7 @@ function Dashboard({
           {route === 'customer' && <CustomerSubtab />}
           {route === 'blacklist' && <BlacklistSubtab />}
           {route === 'revenue' && <RevenueTab />}
+          {route === 'chest' && <CompanyChestTab castName={castName} isAdmin={isAdmin} />}
           {route === 'admin' && isAdmin && <AdminTab />}
           {route === 'settings' && <SettingsTab castName={castName} />}
         </div>
@@ -185,6 +187,7 @@ function routeTitle(r: RouteId): string {
     case 'customer':    return '顧客'
     case 'blacklist':   return 'ブラックリスト'
     case 'revenue':     return '売上'
+    case 'chest':       return 'カンチェ'
     case 'admin':       return '管理'
     case 'settings':    return '設定'
   }

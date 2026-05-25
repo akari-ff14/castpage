@@ -1,0 +1,203 @@
+.chest-tab {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+/* ───── サマリーカード ───── */
+.chest-summary-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  border-radius: 14px;
+  padding: 24px 20px;
+  text-align: center;
+}
+
+.chest-summary-label {
+  font-size: 13px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  margin-bottom: 8px;
+}
+
+.chest-summary-value {
+  font-size: clamp(32px, 8vw, 48px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  margin-bottom: 16px;
+}
+
+.chest-summary-value.positive {
+  color: var(--gold);
+}
+
+.chest-summary-value.negative {
+  color: var(--red);
+}
+
+.chest-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.btn-chest-in,
+.btn-chest-out {
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: opacity 0.15s, transform 0.1s;
+}
+
+.btn-chest-in {
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1.5px solid var(--green-border);
+}
+
+.btn-chest-out {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1.5px solid var(--red-border);
+}
+
+.btn-chest-in:hover,
+.btn-chest-out:hover {
+  opacity: 0.85;
+}
+
+.btn-chest-in:active,
+.btn-chest-out:active {
+  transform: scale(0.98);
+}
+
+/* ───── セクション ───── */
+.chest-section-title {
+  font-size: 14px;
+  color: var(--text-dim);
+  margin: 8px 0 4px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ───── ログ ───── */
+.chest-log {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--border2);
+  border-radius: 10px;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chest-log.positive {
+  border-left-color: var(--green);
+}
+
+.chest-log.negative {
+  border-left-color: var(--red);
+}
+
+.chest-log-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.chest-log-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.chest-log-amount {
+  font-size: 17px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chest-log-amount.c-green { color: var(--green); }
+.chest-log-amount.c-red { color: var(--red); }
+
+.chest-log-cast {
+  font-size: 12px;
+}
+
+.chest-log-memo {
+  font-size: 13px;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.chest-log-date {
+  font-size: 11px;
+}
+
+.chest-log-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.btn-icon {
+  width: 30px;
+  height: 30px;
+  background: transparent;
+  border: 1px solid var(--border2);
+  color: var(--text-dim);
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-icon:hover {
+  background: var(--bg2);
+  color: var(--text);
+}
+
+.btn-icon-danger:hover {
+  background: var(--red-bg);
+  color: var(--red);
+  border-color: var(--red-border);
+}
+
+/* モーダル内のトグル */
+.chest-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.chest-toggle-btn {
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.chest-toggle-btn.active {
+  background: var(--teal-bg);
+  color: var(--teal);
+  border-color: var(--teal);
+}

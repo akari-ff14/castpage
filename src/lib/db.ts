@@ -763,6 +763,315 @@ export function clearCache() {
 }
 
 // ============================================================
+// カンパニーチェスト (カンチェ)
+// ============================================================
+
+export interface ChestLog {
+  log_id: string
+  キャスト名: string
+  金額: number
+  メモ: string
+  作成日時: string
+}
+
+export interface ChestSummary {
+  total: number
+  logs: ChestLog[]
+}
+
+export async function getCompanyChest(): Promise<ChestSummary> {
+  const { data, error } = await supabase
+    .from('company_chest')
+    .select('id, amount, memo, created_at, cast:casts(name)')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  const list = (data || []).map((r) => ({
+    log_id: r.id,
+    キャスト名: (r.cast as { name?: string } | null)?.name || '',
+    金額: Number(r.amount),
+    メモ: r.memo || '',
+    作成日時: r.created_at,
+  }))
+  const total = list.reduce((sum, l) => sum + l.金額, 0)
+  return { total, logs: list.slice(0, 50) }
+}
+
+export async function addChestEntry(payload: { amount: number; memo?: string }): Promise<void> {
+  if (!payload.amount || payload.amount === 0) throw new Error('金額を入力してください')
+  const me = await getMyCast()
+  if (!me) throw new Error('紐付けされたキャストが見つかりません')
+  const cId = await castIdByName(me.name)
+  const { error } = await supabase.from('company_chest').insert({
+    cast_id: cId,
+    amount: payload.amount,
+    memo: payload.memo || '',
+  })
+  if (error) throw error
+}
+
+export async function updateChestEntry(logId: string, fields: Partial<{ amount: number; memo: string }>): Promise<void> {
+  const { error } = await supabase.from('company_chest').update(fields).eq('id', logId)
+  if (error) throw error
+}
+
+export async function deleteChestEntry(logId: string): Promise<void> {
+  const { error } = await supabase.from('company_chest').delete().eq('id', logId)
+  if (error) throw error
+}
+
+// ============================================================
+// 経費 (予算)
+// ============================================================
+
+export interface ExpenseRow {
+  expense_id: string
+  日付: string
+  金額: number
+  カテゴリ: string
+  メモ: string
+  作成日時: string
+}
+
+export async function getExpenses(): Promise<ExpenseRow[]> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('id, date, amount, category, memo, created_at')
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map((r) => ({
+    expense_id: r.id,
+    日付: r.date,
+    金額: Number(r.amount),
+    カテゴリ: r.category || 'その他',
+    メモ: r.memo || '',
+    作成日時: r.created_at,
+  }))
+}
+
+export async function addExpense(payload: { date: string; amount: number; category?: string; memo?: string }): Promise<void> {
+  if (!payload.date) throw new Error('日付が必要です')
+  if (!payload.amount || payload.amount === 0) throw new Error('金額を入力してください')
+  const { error } = await supabase.from('expenses').insert({
+    date: payload.date,
+    amount: payload.amount,
+    category: payload.category || 'その他',
+    memo: payload.memo || '',
+  })
+  if (error) throw error
+}
+
+export async function deleteExpense(expenseId: string): Promise<void> {
+  const { error } = await supabase.from('expenses').delete().eq('id', expenseId)
+  if (error) throw error
+}
+
+// ============================================================
+// インサイト（管理画面用、クライアント側で集計）
+// ============================================================
+
+export interface WeeklyInsight {
+  weekKey: string         // 例: "2026/05/19" (月曜)
+  weekLabel: string       // 例: "5/19週"
+  revenue: number
+  salary: number
+  cashFlow: number
+  sessionCount: number
+  hasUncollected: boolean
+}
+
+export interface HourDistribution {
+  hour: number            // 0-23
+  count: number
+}
+
+export interface ServiceBreakdown {
+  key: string             // 'normal' or 'vip'
+  label: string
+  count: number
+  revenue: number
+  percent: number         // 全体に対する %
+}
+
+export interface RoomBreakdown {
+  name: string
+  count: number
+  revenue: number
+}
+
+export interface RetentionStats {
+  totalCustomers: number  // ユニーク顧客数
+  newCustomers: number    // 1回のみの顧客数
+  repeatCustomers: number // 2回以上の顧客数
+  newRatio: number        // 0-1
+  repeatRatio: number
+  avgVisits: number       // 顧客あたり平均来店回数
+}
+
+export interface InsightsData {
+  weekly: WeeklyInsight[]
+  hourly: HourDistribution[]
+  serviceBreakdown: ServiceBreakdown[]
+  topRooms: RoomBreakdown[]
+  retention: RetentionStats
+}
+
+// 週キー（月曜0時 JST）
+function getWeekKeyFromIso(iso: string): { key: string; label: string } | null {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return null
+  const JST = 9 * 3600000
+  const jst = new Date(d.getTime() + JST)
+  const dow = jst.getUTCDay()
+  const diff = dow === 0 ? -6 : 1 - dow
+  const mon = new Date(jst)
+  mon.setUTCDate(jst.getUTCDate() + diff)
+  const mo = mon.getUTCMonth() + 1
+  const day = mon.getUTCDate()
+  return {
+    key: `${mon.getUTCFullYear()}/${String(mo).padStart(2, '0')}/${String(day).padStart(2, '0')}`,
+    label: `${mo}/${day}週`,
+  }
+}
+
+export async function getInsights(): Promise<InsightsData> {
+  const pricing = await loadPricing()
+
+  // 完了済セッションを取得
+  const { data, error } = await supabase
+    .from('sessions')
+    .select('service_type, base_price, option_price, extend_count, option_count, customer_count, revenue, started_at, created_at, room:rooms(name), customer_names')
+    .eq('finished', true)
+    .order('created_at', { ascending: false })
+    .limit(2000)
+  if (error) throw error
+
+  const rows = data || []
+
+  // ====== 週次集計 ======
+  const GUARANTEE = 500000
+  const weekMap = new Map<string, WeeklyInsight>()
+  for (const r of rows) {
+    const wk = getWeekKeyFromIso(r.created_at)
+    if (!wk) continue
+    let w = weekMap.get(wk.key)
+    if (!w) {
+      w = {
+        weekKey: wk.key,
+        weekLabel: wk.label,
+        revenue: 0,
+        salary: 0,
+        cashFlow: 0,
+        sessionCount: 0,
+        hasUncollected: false,
+      }
+      weekMap.set(wk.key, w)
+    }
+    const revenue = Number(r.revenue) || 0
+    const base = Number(r.base_price) || 0
+    const ext = Number(r.extend_count) || 0
+    const optPrice = Number(r.option_price) || 0
+    const optCnt = Number(r.option_count) || 0
+    const numCust = Math.max(1, Number(r.customer_count) || 1)
+    const baseTotal = base * numCust * (1 + ext)
+    const optTotal = optPrice * optCnt
+    const salary = GUARANTEE + baseTotal * 0.5 + optTotal
+    w.revenue += revenue
+    w.salary += salary
+    w.cashFlow += revenue - salary
+    w.sessionCount += 1
+  }
+  const weekly = [...weekMap.values()].sort((a, b) => (a.weekKey < b.weekKey ? -1 : 1)).slice(-12)
+
+  // ====== 時間帯分布 ======
+  const hourMap = new Map<number, number>()
+  for (let h = 0; h < 24; h++) hourMap.set(h, 0)
+  for (const r of rows) {
+    const d = new Date(r.started_at)
+    if (isNaN(d.getTime())) continue
+    const JST = 9 * 3600000
+    const jst = new Date(d.getTime() + JST)
+    const h = jst.getUTCHours()
+    hourMap.set(h, (hourMap.get(h) || 0) + 1)
+  }
+  const hourly: HourDistribution[] = [...hourMap.entries()].map(([hour, count]) => ({ hour, count }))
+
+  // ====== 接客種別の比率 ======
+  const serviceMap = new Map<string, { count: number; revenue: number }>()
+  for (const r of rows) {
+    const key = r.service_type
+    let s = serviceMap.get(key)
+    if (!s) {
+      s = { count: 0, revenue: 0 }
+      serviceMap.set(key, s)
+    }
+    s.count += 1
+    s.revenue += Number(r.revenue) || 0
+  }
+  const totalRevenue = [...serviceMap.values()].reduce((sum, s) => sum + s.revenue, 0)
+  const serviceBreakdown: ServiceBreakdown[] = [...serviceMap.entries()].map(([key, s]) => {
+    const pr = pricing.get(key)
+    return {
+      key,
+      label: pr?.label || key,
+      count: s.count,
+      revenue: s.revenue,
+      percent: totalRevenue > 0 ? s.revenue / totalRevenue : 0,
+    }
+  }).sort((a, b) => b.revenue - a.revenue)
+
+  // ====== 人気ルーム ======
+  const roomMap = new Map<string, { count: number; revenue: number }>()
+  for (const r of rows) {
+    const name = (r.room as { name?: string } | null)?.name || '(ルーム未指定)'
+    let rb = roomMap.get(name)
+    if (!rb) {
+      rb = { count: 0, revenue: 0 }
+      roomMap.set(name, rb)
+    }
+    rb.count += 1
+    rb.revenue += Number(r.revenue) || 0
+  }
+  const topRooms: RoomBreakdown[] = [...roomMap.entries()]
+    .map(([name, v]) => ({ name, count: v.count, revenue: v.revenue }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 6)
+
+  // ====== リピート率 ======
+  // customer_visits からユニーク顧客数と来店回数を取得
+  const { data: visits, error: vErr } = await supabase
+    .from('customer_visits')
+    .select('customer_name')
+  if (vErr) throw vErr
+
+  const visitMap = new Map<string, number>()
+  for (const v of visits || []) {
+    const name = (v.customer_name || '').trim()
+    if (!name) continue
+    visitMap.set(name, (visitMap.get(name) || 0) + 1)
+  }
+  const totalCustomers = visitMap.size
+  let newCustomers = 0
+  let repeatCustomers = 0
+  let visitsSum = 0
+  for (const cnt of visitMap.values()) {
+    if (cnt === 1) newCustomers += 1
+    else repeatCustomers += 1
+    visitsSum += cnt
+  }
+  const retention: RetentionStats = {
+    totalCustomers,
+    newCustomers,
+    repeatCustomers,
+    newRatio: totalCustomers > 0 ? newCustomers / totalCustomers : 0,
+    repeatRatio: totalCustomers > 0 ? repeatCustomers / totalCustomers : 0,
+    avgVisits: totalCustomers > 0 ? visitsSum / totalCustomers : 0,
+  }
+
+  return { weekly, hourly, serviceBreakdown, topRooms, retention }
+}
+
+// ============================================================
 // 管理画面用 CRUD
 // ============================================================
 
@@ -997,6 +1306,15 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   addToBlacklist,
   removeFromBlacklist,
   saveUserSettings,
+  // カンチェ / 経費 / インサイト
+  getCompanyChest,
+  addChestEntry,
+  updateChestEntry,
+  deleteChestEntry,
+  getExpenses,
+  addExpense,
+  deleteExpense,
+  getInsights,
 }
 
 async function dbCall<T = unknown>(fn: string, ...args: unknown[]): Promise<DbResult<T>> {

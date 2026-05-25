@@ -229,6 +229,18 @@ body {
   border-radius: 2px 2px 0 0;
 }
 
+/* サブタブが多くて横にあふれる場合のスクロール対応 */
+.admin-subtab-scroll {
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: thin;
+}
+
+.admin-subtab-scroll .subtab-btn {
+  flex: 0 0 auto;
+  padding: 10px 16px;
+}
+
 /* ── カード ── */
 .card {
   background: var(--surface);

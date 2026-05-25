@@ -1,0 +1,314 @@
+.insights {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.insights-section {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+}
+
+.insights-title {
+  font-size: 14px;
+  color: var(--gold);
+  font-weight: 700;
+  margin: 0 0 8px;
+  letter-spacing: 0.04em;
+}
+
+.insights-subtitle {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 16px 0 8px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+/* ===== 週次チャート ===== */
+.weekly-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.weekly-row {
+  display: grid;
+  grid-template-columns: 64px 1fr;
+  gap: 10px;
+  align-items: center;
+}
+
+.weekly-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.weekly-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.weekly-bar {
+  height: 8px;
+  border-radius: 3px;
+  min-width: 1px;
+}
+
+.weekly-bar.revenue {
+  background: var(--green);
+}
+
+.weekly-bar.salary {
+  background: var(--gold);
+  opacity: 0.7;
+}
+
+.weekly-stats {
+  grid-column: 2;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  font-size: 11px;
+  padding: 4px 0 12px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.weekly-stats > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.weekly-stats > div > span:last-child {
+  font-size: 12px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 600px) {
+  .weekly-stats {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.weekly-legend {
+  margin-top: 8px;
+  display: flex;
+  gap: 16px;
+  font-size: 11px;
+  color: var(--text-dim);
+  align-items: center;
+}
+
+.legend-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  margin-right: 4px;
+}
+
+.legend-dot.revenue { background: var(--green); }
+.legend-dot.salary { background: var(--gold); opacity: 0.7; }
+
+/* ===== 時間帯分布 ===== */
+.hourly-chart {
+  display: grid;
+  grid-template-columns: repeat(24, 1fr);
+  gap: 2px;
+  height: 120px;
+  align-items: flex-end;
+  margin-top: 8px;
+  padding-bottom: 16px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.hourly-bar-wrap {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  cursor: help;
+  position: relative;
+}
+
+.hourly-bar {
+  width: 100%;
+  background: var(--teal);
+  border-radius: 2px 2px 0 0;
+  min-height: 0;
+  transition: opacity 0.15s;
+}
+
+.hourly-bar-wrap:hover .hourly-bar {
+  background: var(--gold);
+}
+
+.hourly-label {
+  font-size: 9px;
+  color: var(--text-dim);
+  margin-top: 2px;
+  position: absolute;
+  bottom: -14px;
+}
+
+/* ===== 接客種別 ===== */
+.service-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.service-row {
+  display: grid;
+  grid-template-columns: 1fr 2fr auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.service-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.service-bar-wrap {
+  background: var(--bg2);
+  border-radius: 4px;
+  height: 12px;
+  overflow: hidden;
+}
+
+.service-bar {
+  height: 100%;
+  border-radius: 4px;
+  min-width: 1px;
+}
+
+.service-bar.normal { background: var(--teal); }
+.service-bar.vip    { background: var(--purple); }
+
+.service-value {
+  font-size: 12px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.service-value .c-green {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+/* ===== ルームランキング ===== */
+.rooms-ranking {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.room-row {
+  display: grid;
+  grid-template-columns: 24px 1fr auto auto;
+  gap: 10px;
+  align-items: baseline;
+  padding: 6px 10px;
+  background: var(--bg2);
+  border-radius: 6px;
+  font-size: 13px;
+}
+
+.room-rank {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--gold);
+  text-align: center;
+}
+
+.room-name {
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.room-count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.room-revenue {
+  font-variant-numeric: tabular-nums;
+}
+
+/* ===== リピート率 ===== */
+.retention-totals {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-bottom: 12px;
+}
+
+@media (max-width: 500px) {
+  .retention-totals {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.retention-card {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 6px;
+  text-align: center;
+}
+
+.retention-label {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.retention-value {
+  font-size: 22px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.retention-bar-wrap {
+  display: flex;
+  height: 32px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg2);
+}
+
+.retention-bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bg);
+  white-space: nowrap;
+  overflow: hidden;
+  transition: width 0.3s;
+}
+
+.retention-bar.new {
+  background: var(--teal);
+}
+
+.retention-bar.repeat {
+  background: var(--gold);
+}
