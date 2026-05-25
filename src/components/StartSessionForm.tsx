@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency, fmtTime } from '../lib/format'
 import { useActiveSessions } from '../lib/useRealtimeSessions'
-import { Crown, AlertTriangle } from '../icons'
+import { Crown, AlertTriangle, Plus, Minus, Play, Users, Home, Clock } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './StartSessionForm.css'
@@ -28,14 +28,15 @@ interface Props {
   onStarted: () => void
 }
 
-const PRESET_OPTIONS = [
-  { value: 0, label: '選択しない' },
-  { value: 1, label: '30分（1口）' },
-  { value: 2, label: '1時間（2口）' },
-  { value: 3, label: '1時間半（3口）' },
-  { value: 4, label: '2時間（4口）' },
-  { value: 5, label: '2時間半（5口）' },
-  { value: 6, label: '3時間（6口）' },
+// 予定時間ボタン群: value は 30分単位の口数
+const DURATIONS = [
+  { value: 0, label: 'なし' },
+  { value: 1, label: '30分' },
+  { value: 2, label: '1時間' },
+  { value: 3, label: '1.5時間' },
+  { value: 4, label: '2時間' },
+  { value: 5, label: '2.5時間' },
+  { value: 6, label: '3時間' },
 ]
 
 export default function StartSessionForm({ castName, onStarted }: Props) {
@@ -51,7 +52,6 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
 
   // 全キャストの進行中セッションをリアルタイム購読
   const { sessions: activeSessions } = useActiveSessions()
-  // ルーム名 → 使用中セッション情報 のマップ
   const roomUsage = useMemo(() => {
     const m = new Map<string, typeof activeSessions[number]>()
     for (const s of activeSessions) {
@@ -83,6 +83,11 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
       : 0
 
   const canSubmit = !busy && !!room && filledCustomerNames.length > 0
+  const blocker = !filledCustomerNames.length
+    ? 'お客様の名前を入力してください'
+    : !room
+    ? 'ルームを選んでください'
+    : ''
 
   function updateCustName(i: number, value: string) {
     setCustomerNames((prev) => {
@@ -108,8 +113,6 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
   async function attemptStart() {
     setBusy(true)
     try {
-      // 1) ルーム空き確認
-      // Supabase版の checkRoomAvailability は db.call 経由で {ok, data: {available, usedBy}} 形式
       const rRoom = await db.call<{ available: boolean; usedBy?: string }>('checkRoomAvailability', room)
       if (!rRoom.ok) {
         toast.show(rRoom.error || 'ルーム確認に失敗しました', 'err')
@@ -119,7 +122,6 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
         toast.show(`「${room}」は現在 ${rRoom.data.usedBy || '他のキャスト'} が使用中です`, 'err')
         return
       }
-      // 2) ブラックリストチェック（複数顧客で並列）
       const blResults = await Promise.all(
         filledCustomerNames.map((name) => db.call<BlMatch[]>('checkBlacklist', name)),
       )
@@ -139,7 +141,6 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
         setBlWarning(allMatches)
         return
       }
-      // 3) 開始
       await callStart()
     } catch (e) {
       toast.show(`予期せぬエラー: ${(e as Error).message || String(e)}`, 'err')
@@ -178,7 +179,7 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
 
   return (
     <div className="start-form">
-      {/* 現在使用中のルーム（リアルタイム反映） */}
+      {/* 現在使用中（リアルタイム反映、密表示） */}
       {activeSessions.length > 0 && (
         <div className="card room-usage-card">
           <div className="card-title">
@@ -197,146 +198,154 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
         </div>
       )}
 
-      <div className="card">
-        <div className="card-title">基本情報</div>
-        <div className="form-row">
-          <div className="form-group">
-            <label className="form-label">キャスト名</label>
-            <div className="form-readonly">{castName}</div>
-          </div>
-          <div className="form-group">
-            <label className="form-label">ルーム</label>
-            <div className="select-wrap">
-              <select
-                className="form-select"
-                value={room}
-                onChange={(e) => setRoom(e.target.value)}
-              >
-                <option value="">選択してください</option>
-                {rooms.map((r) => {
-                  const usage = roomUsage.get(r.name)
-                  return (
-                    <option key={r.name} value={r.name} disabled={!!usage}>
-                      {r.name}
-                      {usage ? ` (使用中: ${usage.対応者})` : ''}
-                    </option>
-                  )
-                })}
-              </select>
-            </div>
-          </div>
-        </div>
-
-        <div className="form-group">
-          <label className="form-label">
-            顧客名 <span className="hint">（必須・最大10名）</span>
-          </label>
-          <div className="customer-names">
-            {customerNames.map((n, i) => (
-              <div key={i} className="customer-name-row">
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder={i === 0 ? '顧客名' : `顧客名 ${i + 1}`}
-                  value={n}
-                  onChange={(e) => updateCustName(i, e.target.value)}
-                  autoComplete="off"
-                />
-                {i === customerNames.length - 1 && customerNames.length < 10 ? (
-                  <button
-                    type="button"
-                    className="btn-cust-add"
-                    onClick={addCustName}
-                    title="追加"
-                  >
-                    ＋
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn-cust-rm"
-                    onClick={() => removeCustName(i)}
-                    title="削除"
-                  >
-                    －
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      <div className="card">
-        <div className="card-title">
-          <span>料金</span>
-          {room && (
-            <span
-              className={`badge ${serviceType === 'vip' ? 'badge-vip' : 'badge-normal'}`}
-              style={{ marginLeft: 8, fontSize: 12 }}
-            >
-              {serviceType === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
-              {serviceType === 'vip' ? 'VIP' : '通常'}
-            </span>
-          )}
-        </div>
-        <div className="pricing-grid">
-          {pricing.map((p) => (
-            <div
-              key={p.key}
-              className={`pricing-item${
-                room && p.key !== 'option' && p.key !== serviceType ? ' dimmed' : ''
-              }`}
-            >
-              <div className="pricing-item-label">{p.label}</div>
-              <div className="pricing-item-value">{fmtCurrency(p.price)}</div>
-              <div className="pricing-item-unit">{p.key === 'option' ? '/ 1回' : '/ 30分'}</div>
+      {/* Step 1: 顧客名 */}
+      <section className="step-card">
+        <header className="step-header">
+          <span className="step-num">1</span>
+          <Users size={16} className="step-icon" />
+          <h3 className="step-title">お客様の名前</h3>
+          <span className="step-badge required">必須</span>
+        </header>
+        <div className="customer-names">
+          {customerNames.map((n, i) => (
+            <div key={i} className="customer-name-row">
+              <input
+                type="text"
+                className="form-input"
+                placeholder={i === 0 ? 'お客様の名前を入力' : `お客様 ${i + 1}`}
+                value={n}
+                onChange={(e) => updateCustName(i, e.target.value)}
+                autoComplete="off"
+              />
+              {i === customerNames.length - 1 && customerNames.length < 10 ? (
+                <button
+                  type="button"
+                  className="btn-cust-add"
+                  onClick={addCustName}
+                  title="もう1名追加"
+                  aria-label="お客様を追加"
+                >
+                  <Plus size={18} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-cust-rm"
+                  onClick={() => removeCustName(i)}
+                  title="この欄を削除"
+                  aria-label="このお客様を削除"
+                >
+                  <Minus size={18} />
+                </button>
+              )}
             </div>
           ))}
         </div>
-      </div>
+        <p className="step-hint">複数名なら「＋」で追加（最大10名）</p>
+      </section>
 
-      <div className="card">
-        <div className="card-title">備考</div>
-        <textarea
-          className="form-input"
-          placeholder="備考（任意）"
-          value={note}
-          onChange={(e) => setNote(e.target.value)}
-        />
-      </div>
-
-      <div className="card">
-        <div className="card-title">席代の目安（任意）</div>
-        <div className="form-group">
-          <label className="form-label">予定時間</label>
-          <div className="select-wrap">
-            <select
-              className="form-select"
-              value={presetSlots}
-              onChange={(e) => setPresetSlots(Number(e.target.value))}
-            >
-              {PRESET_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
+      {/* Step 2: ルーム */}
+      <section className="step-card">
+        <header className="step-header">
+          <span className="step-num">2</span>
+          <Home size={16} className="step-icon" />
+          <h3 className="step-title">ルーム</h3>
+          <span className="step-badge required">必須</span>
+        </header>
+        <div className="select-wrap">
+          <select
+            className="form-select"
+            value={room}
+            onChange={(e) => setRoom(e.target.value)}
+          >
+            <option value="">選んでください</option>
+            {rooms.map((r) => {
+              const usage = roomUsage.get(r.name)
+              return (
+                <option key={r.name} value={r.name} disabled={!!usage}>
+                  {r.name}
+                  {usage ? ` (使用中: ${usage.対応者})` : ''}
                 </option>
-              ))}
-            </select>
-          </div>
+              )
+            })}
+          </select>
         </div>
-        {presetSlots > 0 && servicePrice && (
-          <div className="seat-fee-preview">
-            席代の目安: <strong>{fmtCurrency(seatFeeEstimate)}</strong>
-            <span className="muted">
-              （{servicePrice.label} × {numCustomers}名 × {presetSlots}口）
+        {room && servicePrice && (
+          <div className="step-price-chip">
+            <span className={`badge ${serviceType === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
+              {serviceType === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
+              {serviceType === 'vip' ? 'VIP' : '通常'}
+            </span>
+            <span className="muted small">
+              料金 <strong className="c-gold">{fmtCurrency(servicePrice.price)}</strong> / 30分
             </span>
           </div>
         )}
-      </div>
+      </section>
 
-      <button className="btn-primary btn-start" disabled={!canSubmit} onClick={attemptStart}>
-        {busy ? '処理中...' : '応対開始'}
+      {/* Step 3: 予定時間 */}
+      <section className="step-card">
+        <header className="step-header">
+          <span className="step-num">3</span>
+          <Clock size={16} className="step-icon" />
+          <h3 className="step-title">予定時間</h3>
+          <span className="step-badge optional">任意</span>
+        </header>
+        <div className="duration-grid">
+          {DURATIONS.map((d) => (
+            <button
+              key={d.value}
+              type="button"
+              className={`duration-btn ${presetSlots === d.value ? 'active' : ''}`}
+              onClick={() => setPresetSlots(d.value)}
+            >
+              {d.label}
+            </button>
+          ))}
+        </div>
+        {presetSlots > 0 && servicePrice && (
+          <div className="step-fee-preview">
+            <span className="muted small">
+              {numCustomers}名 × {presetSlots}コマ ＝
+            </span>
+            <strong className="step-fee-amount">{fmtCurrency(seatFeeEstimate)}</strong>
+            <span className="muted small">の見込み</span>
+          </div>
+        )}
+        <p className="step-hint">後で「延長」ボタンで30分ずつ追加できます。指定しなくてもOK。</p>
+      </section>
+
+      {/* 備考（折りたたみ） */}
+      <details className="note-collapse">
+        <summary>備考を追加する（任意）</summary>
+        <textarea
+          className="form-input"
+          placeholder="特記事項があれば（例：常連、注意事項など）"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </details>
+
+      {/* 応対開始 */}
+      <button
+        type="button"
+        className="btn-start-cta"
+        disabled={!canSubmit}
+        onClick={attemptStart}
+        title={blocker || '応対を開始'}
+      >
+        {busy ? (
+          '処理中...'
+        ) : (
+          <>
+            <Play size={18} />
+            <span>応対開始</span>
+          </>
+        )}
       </button>
+      {blocker && !busy && (
+        <p className="start-blocker-hint">{blocker}</p>
+      )}
 
       {blWarning && (
         <Modal onClose={() => setBlWarning(null)}>

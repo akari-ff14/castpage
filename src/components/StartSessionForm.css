@@ -1,15 +1,18 @@
-/* 応対開始フォーム */
+/* 応対開始フォーム — 番号付きステップで一気通貫レイアウト */
 
-.start-form .hint {
-  color: var(--red);
-  font-size: 11px;
+.start-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 640px;
 }
 
-/* 現在使用中のルーム表示 */
+/* 現在使用中のルーム（リアルタイム） — 上部のサマリー的に */
 .room-usage-card {
   background: var(--surface);
   border: 1px solid var(--teal-border);
   border-left: 3px solid var(--teal);
+  padding: 12px 14px;
 }
 
 .room-usage-card .card-title {
@@ -17,6 +20,7 @@
   align-items: center;
   gap: 8px;
   color: var(--teal);
+  margin-bottom: 8px;
 }
 
 .live-dot {
@@ -35,7 +39,7 @@
 
 .room-usage-row {
   font-size: 13px;
-  padding: 4px 0;
+  padding: 3px 0;
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
@@ -53,6 +57,80 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ───────── ステップカード ───────── */
+.step-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.step-num {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--teal-bg);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+  font-size: 13px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.step-icon {
+  color: var(--text-dim);
+  flex-shrink: 0;
+}
+
+.step-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+  flex: 1;
+  letter-spacing: 0.02em;
+}
+
+.step-badge {
+  font-size: 11px;
+  font-weight: 600;
+  border-radius: 4px;
+  padding: 2px 7px;
+  flex-shrink: 0;
+}
+
+.step-badge.required {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+}
+
+.step-badge.optional {
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border2);
+}
+
+.step-hint {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0;
+}
+
+/* ───────── 顧客名入力 ───────── */
 .customer-names {
   display: flex;
   flex-direction: column;
@@ -67,16 +145,16 @@
 
 .customer-name-row input {
   flex: 1;
+  font-size: 15px;
+  padding: 12px 14px;
 }
 
 .btn-cust-add,
 .btn-cust-rm {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   border-radius: 8px;
-  font-size: 18px;
-  font-weight: 700;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -89,81 +167,188 @@
   border: 1.5px dashed var(--teal-border);
 }
 
+.btn-cust-add:hover {
+  background: var(--teal);
+  color: var(--bg);
+  border-style: solid;
+}
+
 .btn-cust-rm {
   background: var(--surface);
   color: var(--text-dim);
   border: 1px solid var(--border2);
 }
 
-/* 料金一覧 */
-.pricing-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+.btn-cust-rm:hover {
+  background: var(--surface2);
 }
 
-.pricing-item {
-  background: var(--bg2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 4px;
-  text-align: center;
-  transition: opacity 0.2s, filter 0.2s;
+/* ───────── ルーム選択 ───────── */
+.step-card .select-wrap {
+  width: 100%;
 }
 
-.pricing-item-label {
-  font-size: 13px;
-  color: var(--text-dim);
-  margin-bottom: 4px;
-}
-
-.pricing-item-value {
+.step-card .form-select {
   font-size: 15px;
-  font-weight: 700;
-  color: var(--gold);
+  padding: 12px 14px;
 }
 
-.pricing-item-unit {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-top: 2px;
-}
-
-.pricing-item.dimmed {
-  opacity: 0.22;
-  filter: grayscale(0.5);
-}
-
-/* 席代プレビュー */
-.seat-fee-preview {
+.step-price-chip {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
   background: var(--bg2);
   border: 1px solid var(--border);
   border-radius: 8px;
-  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.step-price-chip strong {
+  font-variant-numeric: tabular-nums;
   font-size: 14px;
-  text-align: center;
 }
 
-.seat-fee-preview strong {
-  color: var(--gold);
-  font-size: 16px;
-  margin: 0 4px;
+/* ───────── 時間ボタン群 ───────── */
+.duration-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
 }
 
-.seat-fee-preview .muted {
-  display: block;
-  font-size: 12px;
+@media (max-width: 480px) {
+  .duration-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.duration-btn {
+  background: var(--surface);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  border-radius: 8px;
+  padding: 12px 6px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+
+.duration-btn:hover:not(.active) {
+  background: var(--bg2);
+  border-color: var(--teal-border);
+}
+
+.duration-btn.active {
+  background: var(--teal-bg);
+  border-color: var(--teal);
+  color: var(--teal);
+}
+
+.step-fee-preview {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 10px 12px;
+  background: var(--green-bg);
+  border: 1px solid var(--green-border);
+  border-radius: 8px;
+  font-size: 13px;
+  flex-wrap: wrap;
+}
+
+.step-fee-amount {
+  font-size: 18px;
+  color: var(--green);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ───────── 備考（折りたたみ） ───────── */
+.note-collapse {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 4px 18px;
+}
+
+.note-collapse summary {
+  cursor: pointer;
+  padding: 12px 0;
+  font-size: 13px;
+  color: var(--text-dim);
+  font-weight: 600;
+  list-style: none;
+  user-select: none;
+}
+
+.note-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.note-collapse summary::before {
+  content: '▸ ';
+  font-size: 11px;
+  transition: transform 0.15s;
+  display: inline-block;
+}
+
+.note-collapse[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.note-collapse[open] summary {
+  color: var(--text);
+}
+
+.note-collapse textarea {
+  margin: 0 0 14px;
+}
+
+/* ───────── 応対開始ボタン ───────── */
+.btn-start-cta {
+  background: var(--teal);
+  color: var(--bg);
+  border: none;
+  border-radius: 12px;
+  padding: 18px 24px;
+  font-size: 17px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   margin-top: 4px;
+  letter-spacing: 0.06em;
+  transition: opacity 0.15s, transform 0.1s;
+  box-shadow: 0 4px 12px rgba(224, 80, 64, 0.18);
 }
 
-/* 応対開始ボタン */
-.btn-start {
-  padding: 18px;
-  font-size: 16px;
-  margin-top: 8px;
+.btn-start-cta:hover:not(:disabled) {
+  opacity: 0.92;
 }
 
-/* BLリスト */
+.btn-start-cta:active:not(:disabled) {
+  transform: scale(0.98);
+}
+
+.btn-start-cta:disabled {
+  background: var(--surface2);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.start-blocker-hint {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 4px 0 0;
+}
+
+/* ───────── BLリスト（モーダル内） ───────── */
 .bl-list {
   list-style: none;
   padding: 0;
