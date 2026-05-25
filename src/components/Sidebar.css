@@ -1,0 +1,252 @@
+/* サイドバー — PC固定 / モバイルドロワー */
+
+:root {
+  --sidebar-width: 220px;
+  --sidebar-bg: var(--surface);
+  --sidebar-fg: var(--text);
+  --sidebar-fg-dim: var(--text-dim);
+  --sidebar-hover-bg: var(--bg2);
+  --sidebar-active-bg: var(--teal-bg);
+  --sidebar-active-fg: var(--teal);
+  --sidebar-border: var(--border);
+}
+
+[data-theme='light'] {
+  --sidebar-bg: #ffffff;
+  --sidebar-hover-bg: #f1ebe2;
+}
+
+[data-theme='midnight'] {
+  --sidebar-bg: #0c0606;
+}
+
+.sidebar {
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: sticky;
+  top: 0;
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  overflow-y: auto;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 14px;
+  border-bottom: 1px solid var(--sidebar-border);
+}
+
+.sidebar-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.sidebar-brand-mark {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--teal-border);
+  color: var(--gold);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: 'Noto Serif JP', serif;
+  font-weight: 700;
+  font-size: 18px;
+}
+
+.sidebar-brand-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--gold);
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--sidebar-fg-dim);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: none;  /* PCでは非表示 */
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-close-btn:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-fg);
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 8px;
+  gap: 2px;
+  flex: 1;
+}
+
+.sidebar-link {
+  background: transparent;
+  border: none;
+  color: var(--sidebar-fg-dim);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-family: inherit;
+  text-align: left;
+  transition: background 0.12s, color 0.12s;
+  width: 100%;
+}
+
+.sidebar-link:hover:not(.active) {
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-fg);
+}
+
+.sidebar-link.active {
+  background: var(--sidebar-active-bg);
+  color: var(--sidebar-active-fg);
+  font-weight: 600;
+}
+
+.sidebar-link > svg {
+  flex-shrink: 0;
+}
+
+.sidebar-link > span {
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-badge {
+  font-size: 10px;
+  background: var(--purple-bg);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  padding: 8px 8px 12px;
+  border-top: 1px solid var(--sidebar-border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sidebar-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-top: 4px;
+  background: var(--bg);
+  border: 1px solid var(--sidebar-border);
+  border-radius: 8px;
+}
+
+.sidebar-user-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.sidebar-user-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--gold);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-user-role {
+  font-size: 10px;
+  color: var(--purple);
+  margin-top: 2px;
+}
+
+.sidebar-user-actions {
+  display: flex;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.sidebar-user-btn {
+  background: transparent;
+  border: none;
+  color: var(--sidebar-fg-dim);
+  cursor: pointer;
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-user-btn:hover {
+  background: var(--sidebar-hover-bg);
+  color: var(--sidebar-fg);
+}
+
+/* バックドロップ（モバイルのみ） */
+.sidebar-backdrop {
+  display: none;
+}
+
+/* モバイル ── 768px 以下 */
+@media (max-width: 768px) {
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1100;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease-out;
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.4);
+  }
+
+  .sidebar.open {
+    transform: translateX(0);
+  }
+
+  .sidebar-close-btn {
+    display: flex;
+  }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0);
+    z-index: 1050;
+    pointer-events: none;
+    transition: background 0.22s ease-out;
+  }
+
+  .sidebar-backdrop.visible {
+    background: rgba(0, 0, 0, 0.5);
+    pointer-events: auto;
+  }
+}

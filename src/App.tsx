@@ -5,25 +5,18 @@ import { db, getMyCast, unbindMyCast } from './lib/db'
 import { applyTheme, getStoredTheme, type ThemeName } from './lib/theme'
 import MagicLinkScreen from './components/MagicLinkScreen'
 import CastSelectionScreen from './components/CastSelectionScreen'
+import Sidebar, { type RouteId } from './components/Sidebar'
+import HomeView from './components/HomeView'
 import SessionTab from './components/SessionTab'
 import ReservationTab from './components/ReservationTab'
-import ListTab from './components/ListTab'
+import HistoryTab from './components/HistoryTab'
+import CustomerSubtab from './components/CustomerSubtab'
+import BlacklistSubtab from './components/BlacklistSubtab'
 import RevenueTab from './components/RevenueTab'
 import SettingsTab from './components/SettingsTab'
 import AdminTab from './components/AdminTab'
+import { Menu } from './icons'
 import './App.css'
-
-type TabId = 'session' | 'reservation' | 'list' | 'revenue' | 'settings' | 'admin'
-
-const BASE_TABS: Array<{ id: TabId; label: string }> = [
-  { id: 'session', label: '接客' },
-  { id: 'reservation', label: '予約' },
-  { id: 'list', label: 'リスト' },
-  { id: 'revenue', label: '売上' },
-  { id: 'settings', label: '設定' },
-]
-
-const ADMIN_TAB: { id: TabId; label: string } = { id: 'admin', label: '管理' }
 
 // 初回ロード時、localStorageに保存されたテーマを即時適用
 applyTheme(getStoredTheme())
@@ -47,7 +40,6 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
-  // ログイン後: バインド済みのキャストを取得
   useEffect(() => {
     if (!session) {
       setCastName(null)
@@ -67,7 +59,6 @@ export default function App() {
       .finally(() => setCastLoading(false))
   }, [session])
 
-  // ログイン後: 保存テーマを適用
   useEffect(() => {
     if (!session) return
     (async () => {
@@ -92,7 +83,6 @@ export default function App() {
       <CastSelectionScreen
         onBound={(name) => {
           setCastName(name)
-          // バインド時に is_admin を再取得
           getMyCast().then((info) => setIsAdmin(info?.is_admin ?? false))
         }}
       />
@@ -126,35 +116,62 @@ function Dashboard({
   onLogout: () => void
   onChangeCast: () => void
 }) {
-  const [tab, setTab] = useState<TabId>('session')
-  const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
+  const [route, setRoute] = useState<RouteId>('home')
+  const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
-    <div className="screen">
-      <header className="topbar">
-        <h2>対話店[灯] / {castName}{isAdmin && <span className="admin-badge">管理者</span>}</h2>
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button className="btn-secondary" onClick={onChangeCast} title="別のキャストとして使う">↔</button>
-          <button className="btn-secondary" onClick={onLogout}>ログアウト</button>
-        </div>
-      </header>
-      <nav className="tab-nav">
-        {tabs.map((t) => (
+    <div className="app-shell">
+      <Sidebar
+        current={route}
+        onNavigate={setRoute}
+        isAdmin={isAdmin}
+        castName={castName}
+        isOpen={sidebarOpen}
+        onClose={() => setSidebarOpen(false)}
+        onLogout={onLogout}
+        onChangeCast={onChangeCast}
+      />
+
+      <div className="app-main">
+        <header className="app-topbar">
           <button
-            key={t.id}
-            className={`tab-btn ${tab === t.id ? 'active' : ''}`}
-            onClick={() => setTab(t.id)}
+            type="button"
+            className="topbar-hamburger"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="メニューを開く"
           >
-            {t.label}
+            <Menu size={20} />
           </button>
-        ))}
-      </nav>
-      {tab === 'session' && <SessionTab castName={castName} />}
-      {tab === 'reservation' && <ReservationTab castName={castName} />}
-      {tab === 'list' && <ListTab castName={castName} isAdmin={isAdmin} />}
-      {tab === 'revenue' && <RevenueTab />}
-      {tab === 'settings' && <SettingsTab castName={castName} />}
-      {tab === 'admin' && isAdmin && <AdminTab />}
+          <h1 className="topbar-title">{routeTitle(route)}</h1>
+        </header>
+
+        <div className="app-content">
+          {route === 'home' && <HomeView castName={castName} onNavigate={setRoute} />}
+          {route === 'session' && <SessionTab castName={castName} />}
+          {route === 'reservation' && <ReservationTab castName={castName} />}
+          {route === 'history' && <HistoryTab castName={castName} isAdmin={isAdmin} />}
+          {route === 'customer' && <CustomerSubtab />}
+          {route === 'blacklist' && <BlacklistSubtab />}
+          {route === 'revenue' && <RevenueTab />}
+          {route === 'admin' && isAdmin && <AdminTab />}
+          {route === 'settings' && <SettingsTab castName={castName} />}
+        </div>
+      </div>
     </div>
   )
 }
+
+function routeTitle(r: RouteId): string {
+  switch (r) {
+    case 'home':        return 'ホーム'
+    case 'session':     return '接客'
+    case 'reservation': return '予約'
+    case 'history':     return '履歴'
+    case 'customer':    return '顧客'
+    case 'blacklist':   return 'ブラックリスト'
+    case 'revenue':     return '売上'
+    case 'admin':       return '管理'
+    case 'settings':    return '設定'
+  }
+}
+
