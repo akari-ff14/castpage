@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { db, getMyCast, unbindMyCast } from './lib/db'
+import { db, getMyCast } from './lib/db'
 import { applyTheme, getStoredTheme, type ThemeName } from './lib/theme'
 import MagicLinkScreen from './components/MagicLinkScreen'
 import CastSelectionScreen from './components/CastSelectionScreen'
@@ -98,11 +98,6 @@ export default function App() {
       onLogout={async () => {
         await supabase.auth.signOut()
       }}
-      onChangeCast={async () => {
-        await unbindMyCast()
-        setCastName(null)
-        setIsAdmin(false)
-      }}
     />
   )
 }
@@ -113,12 +108,10 @@ function Dashboard({
   castName,
   isAdmin,
   onLogout,
-  onChangeCast,
 }: {
   castName: string
   isAdmin: boolean
   onLogout: () => void
-  onChangeCast: () => void
 }) {
   const [route, setRoute] = useState<RouteId>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
@@ -145,7 +138,6 @@ function Dashboard({
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
         onLogout={onLogout}
-        onChangeCast={onChangeCast}
       />
 
       <div className="app-main">

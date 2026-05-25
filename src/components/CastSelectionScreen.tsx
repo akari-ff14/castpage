@@ -1,46 +1,30 @@
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
-import { bindMyCast, getUnboundCasts } from '../lib/db'
+import { bindMyCast } from '../lib/db'
 
 interface Props {
   onBound: (castName: string) => void
 }
 
 export default function CastSelectionScreen({ onBound }: Props) {
-  const [casts, setCasts] = useState<string[]>([])
-  const [loading, setLoading] = useState(true)
+  const [castName, setCastName] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [err, setErr] = useState('')
-  const [busyName, setBusyName] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
 
-  async function reload() {
-    setLoading(true)
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!castName.trim() || !inviteCode.trim()) return
+    setBusy(true)
     setErr('')
     try {
-      const list = await getUnboundCasts()
-      setCasts(list.map((c) => c.name))
+      // 招待コードは大文字に正規化 (Crockford Base32)
+      const info = await bindMyCast(castName.trim(), inviteCode.trim().toUpperCase())
+      onBound(info.name)
     } catch (e) {
       setErr((e as Error).message)
     } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    reload()
-  }, [])
-
-  async function pick(name: string) {
-    setBusyName(name)
-    setErr('')
-    try {
-      await bindMyCast(name)
-      onBound(name)
-    } catch (e) {
-      setErr((e as Error).message)
-      // 他の人に奪われてた可能性 → 再読み込み
-      reload()
-    } finally {
-      setBusyName(null)
+      setBusy(false)
     }
   }
 
@@ -48,36 +32,58 @@ export default function CastSelectionScreen({ onBound }: Props) {
     <div className="ml-overlay">
       <div className="ml-deco">✦ &nbsp; ✦ &nbsp; ✦</div>
       <div className="ml-title">対話店[灯]</div>
-      <div className="ml-sub">あなたはどのキャストですか？</div>
+      <div className="ml-sub">キャストを紐付けてください</div>
       <div className="ml-card">
-        {loading && <p className="muted">読み込み中...</p>}
-        {err && <p className="err">{err}</p>}
-        {!loading && casts.length === 0 && !err && (
-          <p className="muted">
-            選択可能なキャストがありません。<br />
-            既に他のキャスト用に登録済の可能性があります。管理者に確認してください。
-          </p>
-        )}
-        {casts.map((name) => (
+        <form onSubmit={submit} className="ml-form-inner">
+          <label className="form-label">キャスト名</label>
+          <input
+            type="text"
+            className="form-input"
+            value={castName}
+            onChange={(e) => setCastName(e.target.value)}
+            placeholder="例: みかん"
+            autoComplete="off"
+            required
+            disabled={busy}
+          />
+          <label className="form-label" style={{ marginTop: 12 }}>招待コード</label>
+          <input
+            type="text"
+            className="form-input"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value)}
+            placeholder="管理者から受け取った 8 文字"
+            autoComplete="off"
+            autoCapitalize="characters"
+            spellCheck={false}
+            required
+            disabled={busy}
+            style={{ textTransform: 'uppercase', letterSpacing: '0.05em' }}
+          />
           <button
-            key={name}
-            className="btn-secondary cast-select-btn"
-            onClick={() => pick(name)}
-            disabled={busyName !== null}
+            type="submit"
+            className="btn-primary"
+            disabled={busy || !castName.trim() || !inviteCode.trim()}
+            style={{ marginTop: 12 }}
           >
-            {busyName === name ? '紐付け中...' : name}
+            {busy ? '紐付け中...' : '紐付ける'}
           </button>
-        ))}
+          {err && <p className="err" style={{ marginTop: 12 }}>{err}</p>}
+        </form>
+
         <p className="muted ml-hint">
-          一度選択すると、あなたのアカウント（メールアドレス）にそのキャストが紐付きます。
-          後でサイドバー下部のキャスト切替ボタンから変更できます。
+          初回のみ、管理者から伝達された招待コードを入力します。
+          紐付け後はあなたのアカウント (メールアドレス) にこのキャストが固定されます。
+          間違えたときは管理者に連絡してください。
         </p>
+
         <button
           className="btn-secondary"
           onClick={async () => {
             await supabase.auth.signOut()
           }}
           style={{ marginTop: 12, opacity: 0.6 }}
+          disabled={busy}
         >
           別のメールアドレスでログイン
         </button>

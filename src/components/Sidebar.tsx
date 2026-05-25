@@ -11,7 +11,6 @@ import {
   Settings as SettingsIcon,
   Close,
   LogOut,
-  Swap,
   Crown,
 } from '../icons'
 import './Sidebar.css'
@@ -59,7 +58,6 @@ interface Props {
   isOpen: boolean
   onClose: () => void
   onLogout: () => void
-  onChangeCast: () => void
 }
 
 export default function Sidebar({
@@ -70,7 +68,6 @@ export default function Sidebar({
   isOpen,
   onClose,
   onLogout,
-  onChangeCast,
 }: Props) {
   // ESC でドロワーを閉じる + 開いている間は body スクロールロック
   useEffect(() => {
@@ -163,15 +160,6 @@ export default function Sidebar({
               {isAdmin && <div className="sidebar-user-role">管理者</div>}
             </div>
             <div className="sidebar-user-actions">
-              <button
-                type="button"
-                className="sidebar-user-btn"
-                onClick={onChangeCast}
-                title="別のキャストとして使う"
-                aria-label="キャスト切替"
-              >
-                <Swap size={14} />
-              </button>
               <button
                 type="button"
                 className="sidebar-user-btn"

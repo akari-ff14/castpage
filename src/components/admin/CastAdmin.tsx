@@ -1,5 +1,12 @@
 import { useCallback, useEffect, useState } from 'react'
-import { addCast, listAllCasts, updateCast, type CastAdminRow } from '../../lib/db'
+import {
+  addCast,
+  adminUnbindCast,
+  listAllCasts,
+  regenerateInviteCode,
+  updateCast,
+  type CastAdminRow,
+} from '../../lib/db'
 import Modal from '../Modal'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
@@ -71,7 +78,7 @@ export default function CastAdmin() {
           active: form.active,
           note: form.note,
         })
-        toast.show('キャストを追加しました')
+        toast.show('キャストを追加しました（招待コードは一覧で確認）')
       }
       setFormOpen(false)
       load()
@@ -83,13 +90,33 @@ export default function CastAdmin() {
   }
 
   async function unbindUser(c: CastAdminRow) {
-    if (!confirm(`「${c.name}」のログインユーザー紐付けを解除しますか？`)) return
+    if (!confirm(`「${c.name}」の紐付けを解除し、新しい招待コードを発行しますか？`)) return
     try {
-      await updateCast(c.id, { user_id: null })
-      toast.show('紐付けを解除しました')
+      const newCode = await adminUnbindCast(c.id)
+      toast.show(`紐付け解除しました。新しい招待コード: ${newCode}`)
       load()
     } catch (e) {
       toast.show((e as Error).message, 'err')
+    }
+  }
+
+  async function regenerate(c: CastAdminRow) {
+    if (!confirm(`「${c.name}」の招待コードを再発行しますか？古いコードは無効になります。`)) return
+    try {
+      const newCode = await regenerateInviteCode(c.id)
+      toast.show(`新しい招待コード: ${newCode}`)
+      load()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    }
+  }
+
+  async function copyCode(code: string) {
+    try {
+      await navigator.clipboard.writeText(code)
+      toast.show('招待コードをコピーしました')
+    } catch {
+      toast.show('コピーに失敗しました', 'err')
     }
   }
 
@@ -111,12 +138,31 @@ export default function CastAdmin() {
               {!c.active && <span className="badge-inactive">無効</span>}
             </div>
             <div className="admin-card-meta">
-              ログインユーザー: {c.user_id ? <span className="c-green">紐付け済 ({c.user_id.slice(0, 8)}...)</span> : <span className="muted">未紐付</span>}
+              ログインユーザー: {c.user_id ? (
+                <span className="c-green">紐付け済 ({c.user_id.slice(0, 8)}...)</span>
+              ) : (
+                <span className="muted">未紐付</span>
+              )}
             </div>
+            {!c.user_id && c.invite_code && (
+              <div className="admin-card-meta">
+                招待コード: <code style={{ fontSize: '1.05em', letterSpacing: '0.08em' }}>{c.invite_code}</code>{' '}
+                <button
+                  className="btn-secondary"
+                  style={{ padding: '2px 8px', fontSize: '0.85em', marginLeft: 4 }}
+                  onClick={() => copyCode(c.invite_code!)}
+                >
+                  コピー
+                </button>
+              </div>
+            )}
             {c.note && <div className="admin-card-meta">{c.note}</div>}
           </div>
           <div className="admin-card-actions">
             <button className="btn-secondary" onClick={() => openEdit(c)}>編集</button>
+            {!c.user_id && (
+              <button className="btn-secondary" onClick={() => regenerate(c)}>コード再発行</button>
+            )}
             {c.user_id && (
               <button className="btn-danger" onClick={() => unbindUser(c)}>紐付解除</button>
             )}
@@ -162,6 +208,11 @@ export default function CastAdmin() {
             />
             管理者権限を付与
           </label>
+          {!form.id && (
+            <p className="muted" style={{ fontSize: '0.85em', marginTop: 8 }}>
+              招待コードは自動で発行されます。保存後の一覧画面で確認・コピーしてキャスト本人に伝達してください。
+            </p>
+          )}
           <div className="modal-actions">
             <button className="btn-secondary" onClick={() => setFormOpen(false)} disabled={busy}>キャンセル</button>
             <button className="btn-primary" style={{ width: 'auto' }} onClick={save} disabled={busy}>

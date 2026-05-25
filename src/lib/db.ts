@@ -128,8 +128,9 @@ let _pricingCache: Map<string, PricingEntry> | null = null
 
 async function loadCasts() {
   if (_castsCache) return _castsCache
+  // casts_public ビュー経由 (invite_code を除外、RLS バイパスして全 authenticated に id/name を露出)
   const { data, error } = await supabase
-    .from('casts')
+    .from('casts_public')
     .select('id, name')
     .eq('active', true)
     .order('name')
@@ -689,44 +690,36 @@ export async function getMyCast(): Promise<MyCastInfo | null> {
   return { name: data.name, is_admin: !!data.is_admin }
 }
 
-// 未紐付のキャストに自分を紐付け（既に他の人が取ってたら失敗）
-export async function bindMyCast(castName: string): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) throw new Error('未ログイン')
-  // 自分が既に他のキャストを持っていたら一度解除
-  await supabase.from('casts').update({ user_id: null }).eq('user_id', user.id)
-  // user_id IS NULL の状態でしか奪えない
-  const { data, error } = await supabase
-    .from('casts')
-    .update({ user_id: user.id })
-    .eq('name', castName)
-    .is('user_id', null)
-    .select('id')
+// キャスト名 + 招待コードで自分のキャストを確定 (one-time use)
+// 戻り値: 紐付け成功時の MyCastInfo。失敗時は Error throw (UI で単一エラー文言を表示)
+export async function bindMyCast(castName: string, inviteCode: string): Promise<MyCastInfo> {
+  const { data, error } = await supabase.rpc('bind_my_cast', {
+    p_name: castName,
+    p_code: inviteCode,
+  })
   if (error) throw error
-  if (!data || data.length === 0) {
-    throw new Error(`「${castName}」は既に別の方に割り当てられています`)
+  const r = data as { ok: boolean; name?: string; is_admin?: boolean; error?: string }
+  if (!r?.ok) {
+    throw new Error(r?.error || 'キャスト名または招待コードが正しくありません')
   }
   invalidateCaches()
+  return { name: r.name!, is_admin: !!r.is_admin }
 }
 
-// 自分のキャスト紐付を解除
-export async function unbindMyCast(): Promise<void> {
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return
-  await supabase.from('casts').update({ user_id: null }).eq('user_id', user.id)
-  invalidateCaches()
-}
-
-// 未紐付のキャストだけ取得（選択画面用）
-export async function getUnboundCasts(): Promise<Array<{ name: string }>> {
-  const { data, error } = await supabase
-    .from('casts')
-    .select('name')
-    .is('user_id', null)
-    .eq('active', true)
-    .order('name')
+// admin: 未紐付キャストの招待コード再発行
+export async function regenerateInviteCode(castId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('regenerate_invite_code', { p_cast_id: castId })
   if (error) throw error
-  return data || []
+  invalidateCaches()
+  return data as string
+}
+
+// admin: キャストの紐付け解除 + 新コード発行 (1tx)
+export async function adminUnbindCast(castId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_unbind_cast', { p_cast_id: castId })
+  if (error) throw error
+  invalidateCaches()
+  return data as string
 }
 
 // ============================================================
@@ -1083,12 +1076,13 @@ export interface CastAdminRow {
   is_admin: boolean
   active: boolean
   note: string
+  invite_code: string | null  // 未紐付キャストのみ値あり、紐付け済は NULL
 }
 
 export async function listAllCasts(): Promise<CastAdminRow[]> {
   const { data, error } = await supabase
     .from('casts')
-    .select('id, name, user_id, is_admin, active, note')
+    .select('id, name, user_id, is_admin, active, note, invite_code')
     .order('active', { ascending: false })
     .order('name')
   if (error) throw error
@@ -1101,6 +1095,7 @@ export async function listAllCasts(): Promise<CastAdminRow[]> {
     is_admin: !!c.is_admin,
     active: !!c.active,
     note: c.note || '',
+    invite_code: c.invite_code ?? null,
   }))
 }
 
