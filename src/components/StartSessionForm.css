@@ -5,6 +5,54 @@
   font-size: 11px;
 }
 
+/* 現在使用中のルーム表示 */
+.room-usage-card {
+  background: var(--surface);
+  border: 1px solid var(--teal-border);
+  border-left: 3px solid var(--teal);
+}
+
+.room-usage-card .card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--teal);
+}
+
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--teal);
+  box-shadow: 0 0 6px var(--teal);
+  animation: live-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.room-usage-row {
+  font-size: 13px;
+  padding: 4px 0;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.room-usage-room {
+  font-weight: 600;
+  color: var(--text);
+}
+
+.room-usage-time {
+  margin-left: auto;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
 .customer-names {
   display: flex;
   flex-direction: column;

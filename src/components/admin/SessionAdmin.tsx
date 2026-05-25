@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useState } from 'react'
 import {
-  listAllActiveSessions,
   forceEndSession,
   updateHistorySession,
   deleteSession,
   type SessionShape,
 } from '../../lib/db'
+import { useActiveSessions } from '../../lib/useRealtimeSessions'
 import { fmtCurrency, fmtDateTime, fmtTime } from '../../lib/format'
 import Modal from '../Modal'
 import { useToast } from '../Toast'
@@ -20,30 +20,13 @@ interface EditState {
 }
 
 export default function SessionAdmin() {
-  const [active, setActive] = useState<SessionShape[]>([])
-  const [loading, setLoading] = useState(false)
-  const [err, setErr] = useState('')
+  // Realtime購読で自動更新
+  const { sessions: active, loading, reload: load } = useActiveSessions()
   const [editing, setEditing] = useState<EditState | null>(null)
   const [deleting, setDeleting] = useState<SessionShape | null>(null)
   const [forcing, setForcing] = useState<SessionShape | null>(null)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
-
-  const load = useCallback(async () => {
-    setLoading(true)
-    setErr('')
-    try {
-      setActive(await listAllActiveSessions())
-    } catch (e) {
-      setErr((e as Error).message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    load()
-  }, [load])
 
   async function doForceEnd() {
     if (!forcing) return
@@ -108,7 +91,6 @@ export default function SessionAdmin() {
         強制終了は「完了」フラグを立てるだけで、収益はそのまま記録されます。
       </p>
 
-      {err && <p className="err">{err}</p>}
       {loading && !active.length && <p className="muted">読み込み中...</p>}
       {!loading && !active.length && (
         <div className="card empty-state">進行中のセッションはありません</div>

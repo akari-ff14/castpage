@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
-import { fmtCurrency } from '../lib/format'
+import { fmtCurrency, fmtTime } from '../lib/format'
+import { useActiveSessions } from '../lib/useRealtimeSessions'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './StartSessionForm.css'
@@ -46,6 +47,17 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
   const [busy, setBusy] = useState(false)
   const [blWarning, setBlWarning] = useState<BlMatch[] | null>(null)
   const toast = useToast()
+
+  // 全キャストの進行中セッションをリアルタイム購読
+  const { sessions: activeSessions } = useActiveSessions()
+  // ルーム名 → 使用中セッション情報 のマップ
+  const roomUsage = useMemo(() => {
+    const m = new Map<string, typeof activeSessions[number]>()
+    for (const s of activeSessions) {
+      if (s.ルーム) m.set(s.ルーム, s)
+    }
+    return m
+  }, [activeSessions])
 
   useEffect(() => {
     (async () => {
@@ -165,6 +177,25 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
 
   return (
     <div className="start-form">
+      {/* 現在使用中のルーム（リアルタイム反映） */}
+      {activeSessions.length > 0 && (
+        <div className="card room-usage-card">
+          <div className="card-title">
+            <span className="live-dot" />
+            現在使用中（{activeSessions.length}件）
+          </div>
+          {activeSessions.map((s) => (
+            <div key={s.session_id} className="room-usage-row">
+              <span className="room-usage-room">{s.ルーム || '(ルーム未指定)'}</span>
+              <span className="muted"> ｜ </span>
+              <span>{s.対応者}</span>
+              {s.顧客名 && <><span className="muted"> ｜ </span><span className="muted small">{s.顧客名}</span></>}
+              <span className="room-usage-time">〜 {fmtTime(s.対応終了時間)}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="card">
         <div className="card-title">基本情報</div>
         <div className="form-row">
@@ -181,12 +212,16 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
                 onChange={(e) => setRoom(e.target.value)}
               >
                 <option value="">選択</option>
-                {rooms.map((r) => (
-                  <option key={r.name} value={r.name}>
-                    {r.vip === 1 ? '✦ ' : ''}
-                    {r.name}
-                  </option>
-                ))}
+                {rooms.map((r) => {
+                  const usage = roomUsage.get(r.name)
+                  return (
+                    <option key={r.name} value={r.name} disabled={!!usage}>
+                      {r.vip === 1 ? '✦ ' : ''}
+                      {r.name}
+                      {usage ? ` (使用中: ${usage.対応者})` : ''}
+                    </option>
+                  )
+                })}
               </select>
             </div>
           </div>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { db } from '../lib/db'
+import { useSessionUpdates } from '../lib/useRealtimeSessions'
 import { fmtCurrency, fmtTime } from '../lib/format'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -71,6 +72,9 @@ export default function ActiveSession({ castName, onChanged }: Props) {
     const t = setInterval(reload, POLL_INTERVAL_MS)
     return () => clearInterval(t)
   }, [reload])
+
+  // Realtime: 自分のセッションが変更されたら即時再取得（管理者による編集・強制終了等）
+  useSessionUpdates(session?.session_id ?? null, reload)
 
   useEffect(() => {
     if (!session?.対応終了時間) return
