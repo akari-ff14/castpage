@@ -96,16 +96,14 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
     setBusy(true)
     try {
       // 1) ルーム空き確認
-      // checkRoomAvailability は GAS 側でフラット形式 ({ok, available, usedBy}) を返す
-      const rRoom = await db.call('checkRoomAvailability', room) as
-        | { ok: true; available: boolean; usedBy?: string }
-        | { ok: false; error: string }
+      // Supabase版の checkRoomAvailability は db.call 経由で {ok, data: {available, usedBy}} 形式
+      const rRoom = await db.call<{ available: boolean; usedBy?: string }>('checkRoomAvailability', room)
       if (!rRoom.ok) {
         toast.show(rRoom.error || 'ルーム確認に失敗しました', 'err')
         return
       }
-      if (!rRoom.available) {
-        toast.show(`「${room}」は現在 ${rRoom.usedBy || '他のキャスト'} が使用中です`, 'err')
+      if (!rRoom.data.available) {
+        toast.show(`「${room}」は現在 ${rRoom.data.usedBy || '他のキャスト'} が使用中です`, 'err')
         return
       }
       // 2) ブラックリストチェック（複数顧客で並列）

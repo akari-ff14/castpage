@@ -670,17 +670,23 @@ export async function getRevenueStatus(): Promise<RevenueStatus> {
 // API: キャスト⇔ユーザー紐付け
 // ============================================================
 
-// 現在ログイン中のユーザーに紐付いているキャスト名を取得（紐付なしなら null）
-export async function getMyCast(): Promise<string | null> {
+// 現在ログイン中のユーザーに紐付いているキャスト情報を取得（紐付なしなら null）
+export interface MyCastInfo {
+  name: string
+  is_admin: boolean
+}
+
+export async function getMyCast(): Promise<MyCastInfo | null> {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data, error } = await supabase
     .from('casts')
-    .select('name')
+    .select('name, is_admin')
     .eq('user_id', user.id)
     .maybeSingle()
   if (error) throw error
-  return data?.name ?? null
+  if (!data) return null
+  return { name: data.name, is_admin: !!data.is_admin }
 }
 
 // 未紐付のキャストに自分を紐付け（既に他の人が取ってたら失敗）
@@ -754,6 +760,210 @@ export async function saveUserSettings(settings: { theme?: string }): Promise<vo
 
 export function clearCache() {
   invalidateCaches()
+}
+
+// ============================================================
+// 管理画面用 CRUD
+// ============================================================
+
+export interface CastAdminRow {
+  id: string
+  name: string
+  user_id: string | null
+  user_email: string | null  // join で取得（auth.users から）
+  is_admin: boolean
+  active: boolean
+  note: string
+}
+
+export async function listAllCasts(): Promise<CastAdminRow[]> {
+  const { data, error } = await supabase
+    .from('casts')
+    .select('id, name, user_id, is_admin, active, note')
+    .order('active', { ascending: false })
+    .order('name')
+  if (error) throw error
+  // auth.usersのemailは権限上ここでは取れない（admin APIが必要）。user_idがあるかどうかだけ表示
+  return (data || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    user_id: c.user_id,
+    user_email: null,
+    is_admin: !!c.is_admin,
+    active: !!c.active,
+    note: c.note || '',
+  }))
+}
+
+export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string }): Promise<void> {
+  const { error } = await supabase.from('casts').insert({
+    name: payload.name,
+    is_admin: !!payload.is_admin,
+    active: payload.active !== false,
+    note: payload.note || '',
+  })
+  if (error) throw error
+  invalidateCaches()
+}
+
+export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null }>): Promise<void> {
+  const { error } = await supabase.from('casts').update(fields).eq('id', id)
+  if (error) throw error
+  invalidateCaches()
+}
+
+export interface RoomAdminRow {
+  id: string
+  name: string
+  vip: boolean
+  active: boolean
+  note: string
+}
+
+export async function listAllRooms(): Promise<RoomAdminRow[]> {
+  const { data, error } = await supabase
+    .from('rooms')
+    .select('id, name, vip, active, note')
+    .order('active', { ascending: false })
+    .order('name')
+  if (error) throw error
+  return (data || []).map((r) => ({
+    id: r.id,
+    name: r.name,
+    vip: !!r.vip,
+    active: !!r.active,
+    note: r.note || '',
+  }))
+}
+
+export async function addRoom(payload: { name: string; vip?: boolean; active?: boolean; note?: string }): Promise<void> {
+  const { error } = await supabase.from('rooms').insert({
+    name: payload.name,
+    vip: !!payload.vip,
+    active: payload.active !== false,
+    note: payload.note || '',
+  })
+  if (error) throw error
+  invalidateCaches()
+}
+
+export async function updateRoom(id: string, fields: Partial<{ name: string; vip: boolean; active: boolean; note: string }>): Promise<void> {
+  const { error } = await supabase.from('rooms').update(fields).eq('id', id)
+  if (error) throw error
+  invalidateCaches()
+}
+
+export async function updatePricing(key: string, fields: Partial<{ label: string; price: number; active: boolean; note: string }>): Promise<void> {
+  const { error } = await supabase.from('pricing').update(fields).eq('key', key)
+  if (error) throw error
+  invalidateCaches()
+}
+
+// 進行中の全セッション一覧（管理者用）
+export async function listAllActiveSessions(): Promise<SessionShape[]> {
+  const pricing = await loadPricing()
+  const { data, error } = await supabase
+    .from('sessions')
+    .select(SESSION_SELECT)
+    .eq('finished', false)
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map((r) => sessionRowToShape(r as unknown as SessionRow, pricing))
+}
+
+// 強制終了（破棄ではなく完了マーク）
+export async function forceEndSession(sessionId: string): Promise<void> {
+  const { error } = await supabase
+    .from('sessions')
+    .update({ finished: true })
+    .eq('id', sessionId)
+  if (error) throw error
+}
+
+// 完了セッションの編集 — 全項目対応で収益自動再計算
+//
+// 注意:
+//   - service_type を変更すると base_price と option_price も
+//     新しい単価のスナップショットに置き換わる（履歴の整合性のため）
+//   - customer_names を変更すると customer_count も自動更新
+//   - revenue は base_price × customer_count × (1+extend_count) + option_price × option_count で再計算
+export async function updateHistorySession(
+  sessionId: string,
+  fields: Partial<{
+    cast_name: string
+    room_name: string | null  // null/'' でルーム解除
+    service_type: string
+    customer_names: string
+    extend_count: number
+    option_count: number
+    note: string
+  }>,
+): Promise<SessionShape> {
+  const pricing = await loadPricing()
+  // 現在の値を取得
+  const { data: cur, error: e1 } = await supabase
+    .from('sessions')
+    .select('cast_id, room_id, service_type, base_price, option_price, customer_count, customer_names, extend_count, option_count')
+    .eq('id', sessionId)
+    .single()
+  if (e1) throw e1
+
+  const updates: Record<string, unknown> = {}
+
+  // キャスト変更
+  if (fields.cast_name !== undefined) {
+    updates.cast_id = await castIdByName(fields.cast_name)
+  }
+  // ルーム変更（null/空文字で解除）
+  if (fields.room_name !== undefined) {
+    updates.room_id = fields.room_name ? await roomIdByName(fields.room_name) : null
+  }
+  // 接客種別変更 → 単価スナップショットも更新
+  let newBasePrice = Number(cur.base_price)
+  let newOptPrice = Number(cur.option_price)
+  if (fields.service_type !== undefined && fields.service_type !== cur.service_type) {
+    const svc = pricing.get(fields.service_type)
+    if (!svc) throw new Error(`接客種別が無効です: ${fields.service_type}`)
+    const opt = pricing.get('option')
+    if (!opt) throw new Error('オプション料金が見つかりません')
+    updates.service_type = fields.service_type
+    updates.base_price = svc.price
+    updates.option_price = opt.price
+    newBasePrice = svc.price
+    newOptPrice = opt.price
+  }
+  // 顧客名 → 顧客数も再計算
+  let newCustCount = Number(cur.customer_count) || 1
+  if (fields.customer_names !== undefined) {
+    updates.customer_names = fields.customer_names
+    const names = fields.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+    newCustCount = Math.max(1, names.length)
+    updates.customer_count = newCustCount
+  }
+  // 延長/オプション回数
+  const newExt = fields.extend_count !== undefined ? Math.max(0, fields.extend_count) : Number(cur.extend_count) || 0
+  const newOptCnt = fields.option_count !== undefined ? Math.max(0, fields.option_count) : Number(cur.option_count) || 0
+  if (fields.extend_count !== undefined) updates.extend_count = newExt
+  if (fields.option_count !== undefined) updates.option_count = newOptCnt
+  // 備考
+  if (fields.note !== undefined) updates.note = fields.note
+
+  // 収益再計算: base × 顧客数 × (1+延長回数) + opt × オプション回数
+  updates.revenue = newBasePrice * newCustCount * (1 + newExt) + newOptPrice * newOptCnt
+
+  const { data, error } = await supabase
+    .from('sessions')
+    .update(updates)
+    .eq('id', sessionId)
+    .select(SESSION_SELECT)
+    .single()
+  if (error) throw error
+  return sessionRowToShape(data as unknown as SessionRow, pricing)
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const { error } = await supabase.from('sessions').delete().eq('id', sessionId)
+  if (error) throw error
 }
 
 // ============================================================

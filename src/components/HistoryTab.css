@@ -68,3 +68,34 @@
 .history-row > span:last-child {
   text-align: right;
 }
+
+.history-actions {
+  display: flex;
+  gap: 6px;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+
+.history-actions button {
+  font-size: 12px;
+  padding: 6px 14px;
+}
+
+.edit-revenue-preview {
+  background: var(--green-bg);
+  border: 1px solid var(--green-border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: center;
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.edit-revenue-preview strong {
+  color: var(--green);
+  font-size: 18px;
+  margin-left: 8px;
+  font-variant-numeric: tabular-nums;
+}

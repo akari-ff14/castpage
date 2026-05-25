@@ -11,7 +11,13 @@ const SUBTABS: Array<{ id: SubtabId; label: string }> = [
   { id: 'blacklist', label: 'BL' },
 ]
 
-export default function ListTab({ castName }: { castName: string }) {
+export default function ListTab({
+  castName,
+  isAdmin,
+}: {
+  castName: string
+  isAdmin: boolean
+}) {
   const [sub, setSub] = useState<SubtabId>('history')
 
   return (
@@ -27,7 +33,7 @@ export default function ListTab({ castName }: { castName: string }) {
           </button>
         ))}
       </nav>
-      {sub === 'history' && <HistoryTab castName={castName} />}
+      {sub === 'history' && <HistoryTab castName={castName} isAdmin={isAdmin} />}
       {sub === 'customer' && <CustomerSubtab />}
       {sub === 'blacklist' && <BlacklistSubtab />}
     </div>

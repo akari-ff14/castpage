@@ -1,0 +1,108 @@
+/* 管理画面共通スタイル */
+
+.admin-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.admin-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px dashed var(--border);
+}
+
+.admin-header h3 {
+  color: var(--gold);
+  font-size: 16px;
+  margin: 0;
+  letter-spacing: 0.04em;
+}
+
+.admin-add-btn {
+  width: auto;
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.admin-section-h {
+  margin: 16px 0 8px;
+  font-size: 13px;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+}
+
+.admin-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--gold);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.admin-card.inactive {
+  opacity: 0.55;
+  border-left-color: var(--border2);
+}
+
+.admin-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-card-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+  font-size: 15px;
+}
+
+.admin-card-meta {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.admin-card-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.admin-card-actions button {
+  font-size: 12px;
+  padding: 6px 12px;
+}
+
+.badge-inactive {
+  background: var(--surface2);
+  color: var(--text-dim);
+  border: 1px solid var(--border2);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  padding: 6px 0;
+  cursor: pointer;
+}
+
+.checkbox-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}

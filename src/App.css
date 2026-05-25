@@ -471,6 +471,19 @@ button {
   color: var(--text-dim);
 }
 
+.admin-badge {
+  display: inline-block;
+  background: var(--purple-bg);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  margin-left: 8px;
+  vertical-align: middle;
+}
+
 .error-box {
   max-width: 600px;
   margin: 60px auto;

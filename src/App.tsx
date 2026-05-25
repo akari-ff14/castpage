@@ -10,17 +10,20 @@ import ReservationTab from './components/ReservationTab'
 import ListTab from './components/ListTab'
 import RevenueTab from './components/RevenueTab'
 import SettingsTab from './components/SettingsTab'
+import AdminTab from './components/AdminTab'
 import './App.css'
 
-type TabId = 'session' | 'reservation' | 'list' | 'revenue' | 'settings'
+type TabId = 'session' | 'reservation' | 'list' | 'revenue' | 'settings' | 'admin'
 
-const TABS: Array<{ id: TabId; label: string }> = [
+const BASE_TABS: Array<{ id: TabId; label: string }> = [
   { id: 'session', label: '接客' },
   { id: 'reservation', label: '予約' },
   { id: 'list', label: 'リスト' },
   { id: 'revenue', label: '売上' },
   { id: 'settings', label: '設定' },
 ]
+
+const ADMIN_TAB: { id: TabId; label: string } = { id: 'admin', label: '管理' }
 
 // 初回ロード時、localStorageに保存されたテーマを即時適用
 applyTheme(getStoredTheme())
@@ -29,6 +32,7 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
   const [castName, setCastName] = useState<string | null>(null)
+  const [isAdmin, setIsAdmin] = useState(false)
   const [castLoading, setCastLoading] = useState(false)
 
   useEffect(() => {
@@ -47,12 +51,19 @@ export default function App() {
   useEffect(() => {
     if (!session) {
       setCastName(null)
+      setIsAdmin(false)
       return
     }
     setCastLoading(true)
     getMyCast()
-      .then((name) => setCastName(name))
-      .catch(() => setCastName(null))
+      .then((info) => {
+        setCastName(info?.name ?? null)
+        setIsAdmin(info?.is_admin ?? false)
+      })
+      .catch(() => {
+        setCastName(null)
+        setIsAdmin(false)
+      })
       .finally(() => setCastLoading(false))
   }, [session])
 
@@ -77,18 +88,28 @@ export default function App() {
   if (!session) return <MagicLinkScreen />
 
   if (!castName) {
-    return <CastSelectionScreen onBound={(name) => setCastName(name)} />
+    return (
+      <CastSelectionScreen
+        onBound={(name) => {
+          setCastName(name)
+          // バインド時に is_admin を再取得
+          getMyCast().then((info) => setIsAdmin(info?.is_admin ?? false))
+        }}
+      />
+    )
   }
 
   return (
     <Dashboard
       castName={castName}
+      isAdmin={isAdmin}
       onLogout={async () => {
         await supabase.auth.signOut()
       }}
       onChangeCast={async () => {
         await unbindMyCast()
         setCastName(null)
+        setIsAdmin(false)
       }}
     />
   )
@@ -96,26 +117,29 @@ export default function App() {
 
 function Dashboard({
   castName,
+  isAdmin,
   onLogout,
   onChangeCast,
 }: {
   castName: string
+  isAdmin: boolean
   onLogout: () => void
   onChangeCast: () => void
 }) {
   const [tab, setTab] = useState<TabId>('session')
+  const tabs = isAdmin ? [...BASE_TABS, ADMIN_TAB] : BASE_TABS
 
   return (
     <div className="screen">
       <header className="topbar">
-        <h2>対話店[灯] / {castName}</h2>
+        <h2>対話店[灯] / {castName}{isAdmin && <span className="admin-badge">管理者</span>}</h2>
         <div style={{ display: 'flex', gap: 6 }}>
           <button className="btn-secondary" onClick={onChangeCast} title="別のキャストとして使う">↔</button>
           <button className="btn-secondary" onClick={onLogout}>ログアウト</button>
         </div>
       </header>
       <nav className="tab-nav">
-        {TABS.map((t) => (
+        {tabs.map((t) => (
           <button
             key={t.id}
             className={`tab-btn ${tab === t.id ? 'active' : ''}`}
@@ -127,9 +151,10 @@ function Dashboard({
       </nav>
       {tab === 'session' && <SessionTab castName={castName} />}
       {tab === 'reservation' && <ReservationTab castName={castName} />}
-      {tab === 'list' && <ListTab castName={castName} />}
+      {tab === 'list' && <ListTab castName={castName} isAdmin={isAdmin} />}
       {tab === 'revenue' && <RevenueTab />}
       {tab === 'settings' && <SettingsTab castName={castName} />}
+      {tab === 'admin' && isAdmin && <AdminTab />}
     </div>
   )
 }

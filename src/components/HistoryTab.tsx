@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { db } from '../lib/db'
+import { db, deleteSession, getCastsAndRooms, getPricing, updateHistorySession } from '../lib/db'
 import { fmtCurrency, fmtDateTime, fmtTime } from '../lib/format'
+import Modal from './Modal'
+import { useToast } from './Toast'
 import './HistoryTab.css'
 
 interface HistorySession {
@@ -20,6 +22,23 @@ interface HistorySession {
   備考: string
 }
 
+interface EditState {
+  session_id: string
+  cast_name: string
+  room_name: string
+  service_type: string
+  customer_names: string
+  extend_count: number
+  option_count: number
+  note: string
+}
+
+interface PricingEntry {
+  key: string
+  label: string
+  price: number
+}
+
 function nowJstYearMonth(): { year: number; month: number } {
   const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
   return {
@@ -28,7 +47,13 @@ function nowJstYearMonth(): { year: number; month: number } {
   }
 }
 
-export default function HistoryTab({ castName }: { castName: string }) {
+export default function HistoryTab({
+  castName,
+  isAdmin,
+}: {
+  castName: string
+  isAdmin: boolean
+}) {
   const initial = nowJstYearMonth()
   const [year, setYear] = useState(initial.year)
   const [month, setMonth] = useState(initial.month)
@@ -36,6 +61,16 @@ export default function HistoryTab({ castName }: { castName: string }) {
   const [list, setList] = useState<HistorySession[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
+
+  // 編集モーダル用の参照データ
+  const [casts, setCasts] = useState<string[]>([])
+  const [rooms, setRooms] = useState<string[]>([])
+  const [pricing, setPricing] = useState<PricingEntry[]>([])
+
+  const [editing, setEditing] = useState<EditState | null>(null)
+  const [deleting, setDeleting] = useState<HistorySession | null>(null)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -50,7 +85,90 @@ export default function HistoryTab({ castName }: { castName: string }) {
     load()
   }, [load])
 
+  // 編集モーダル用の選択肢を一度だけ取得
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cr, pr] = await Promise.all([getCastsAndRooms(), getPricing()])
+        setCasts(cr.casts)
+        setRooms(cr.rooms)
+        setPricing(pr.filter((p) => p.key !== 'option'))
+      } catch {
+        // 編集時に必要なデータなので無視（モーダル開いた時にエラー出る）
+      }
+    })()
+  }, [])
+
   const filtered = castFilter === 'mine' ? list.filter((s) => s.対応者 === castName) : list
+
+  function canEdit(s: HistorySession): boolean {
+    return isAdmin || s.対応者 === castName
+  }
+
+  function openEdit(s: HistorySession) {
+    setEditing({
+      session_id: s.session_id,
+      cast_name: s.対応者,
+      room_name: s.ルーム || '',
+      service_type: s.接客種別,
+      customer_names: s.顧客名,
+      extend_count: s.延長回数,
+      option_count: s.オプション回数,
+      note: s.備考,
+    })
+  }
+
+  async function saveEdit() {
+    if (!editing) return
+    setBusy(true)
+    try {
+      await updateHistorySession(editing.session_id, {
+        cast_name: editing.cast_name,
+        room_name: editing.room_name || null,
+        service_type: editing.service_type,
+        customer_names: editing.customer_names,
+        extend_count: editing.extend_count,
+        option_count: editing.option_count,
+        note: editing.note,
+      })
+      toast.show('履歴を更新しました')
+      setEditing(null)
+      load()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleting) return
+    setBusy(true)
+    try {
+      await deleteSession(deleting.session_id)
+      toast.show('履歴を削除しました')
+      setDeleting(null)
+      load()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 編集中の収益プレビュー
+  const editPreview = (() => {
+    if (!editing) return 0
+    const svc = pricing.find((p) => p.key === editing.service_type)
+    const optEntry = pricing.find((p) => p.key === 'option')
+    const basePrice = svc?.price ?? 0
+    const optPrice = optEntry?.price ?? 500000  // フォールバック
+    const custs = editing.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+    const nCust = Math.max(1, custs.length)
+    const ext = Math.max(0, editing.extend_count)
+    const opt = Math.max(0, editing.option_count)
+    return basePrice * nCust * (1 + ext) + optPrice * opt
+  })()
 
   return (
     <div className="history-tab">
@@ -128,7 +246,7 @@ export default function HistoryTab({ castName }: { castName: string }) {
           </div>
           <div className="history-row">
             <span className="muted">対応者 / ルーム</span>
-            <span>{s.対応者} / {s.ルーム}</span>
+            <span>{s.対応者} / {s.ルーム || '—'}</span>
           </div>
           <div className="history-row">
             <span className="muted">顧客</span>
@@ -146,8 +264,141 @@ export default function HistoryTab({ castName }: { castName: string }) {
               <span>{s.備考}</span>
             </div>
           )}
+          {canEdit(s) && (
+            <div className="history-actions">
+              <button className="btn-secondary" onClick={() => openEdit(s)}>編集</button>
+              <button className="btn-danger" onClick={() => setDeleting(s)}>削除</button>
+            </div>
+          )}
         </div>
       ))}
+
+      {/* 編集モーダル */}
+      {editing && (
+        <Modal onClose={() => !busy && setEditing(null)}>
+          <h3>履歴を編集</h3>
+          <p className="muted small">数量や種別を変えると、収益金は自動再計算されます。</p>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">対応者</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={editing.cast_name}
+                  onChange={(e) => setEditing((p) => (p ? { ...p, cast_name: e.target.value } : null))}
+                  disabled={!isAdmin}
+                  title={!isAdmin ? '管理者のみ変更可能' : ''}
+                >
+                  {casts.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <div className="form-group">
+              <label className="form-label">ルーム</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={editing.room_name}
+                  onChange={(e) => setEditing((p) => (p ? { ...p, room_name: e.target.value } : null))}
+                >
+                  <option value="">—</option>
+                  {rooms.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">接客種別</label>
+            <div className="select-wrap">
+              <select
+                className="form-select"
+                value={editing.service_type}
+                onChange={(e) => setEditing((p) => (p ? { ...p, service_type: e.target.value } : null))}
+              >
+                {pricing.map((p) => (
+                  <option key={p.key} value={p.key}>
+                    {p.label} ({fmtCurrency(p.price)})
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">顧客名（カンマ区切りで複数）</label>
+            <input
+              type="text"
+              className="form-input"
+              value={editing.customer_names}
+              onChange={(e) => setEditing((p) => (p ? { ...p, customer_names: e.target.value } : null))}
+            />
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">延長回数</label>
+              <input
+                type="number"
+                className="form-input"
+                min="0"
+                value={editing.extend_count}
+                onChange={(e) =>
+                  setEditing((p) => (p ? { ...p, extend_count: Math.max(0, Number(e.target.value) || 0) } : null))
+                }
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">オプション回数</label>
+              <input
+                type="number"
+                className="form-input"
+                min="0"
+                value={editing.option_count}
+                onChange={(e) =>
+                  setEditing((p) =>
+                    p ? { ...p, option_count: Math.max(0, Number(e.target.value) || 0) } : null,
+                  )
+                }
+              />
+            </div>
+          </div>
+          <div className="form-group">
+            <label className="form-label">備考</label>
+            <textarea
+              className="form-input"
+              value={editing.note}
+              onChange={(e) => setEditing((p) => (p ? { ...p, note: e.target.value } : null))}
+            />
+          </div>
+          <div className="edit-revenue-preview">
+            再計算後の収益金: <strong>{fmtCurrency(editPreview)}</strong>
+          </div>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setEditing(null)} disabled={busy}>キャンセル</button>
+            <button className="btn-primary" style={{ width: 'auto' }} onClick={saveEdit} disabled={busy}>
+              {busy ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* 削除確認 */}
+      {deleting && (
+        <Modal onClose={() => !busy && setDeleting(null)}>
+          <h3>履歴を削除しますか？</h3>
+          <p className="muted">
+            {fmtDateTime(deleting.作成日時)} ｜ {deleting.対応者} ｜ {deleting.顧客名 || '—'}<br />
+            収益: {fmtCurrency(deleting.収益金)}
+          </p>
+          <p className="err">⚠ この操作は取り消せません。売上集計からも除外されます。</p>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setDeleting(null)} disabled={busy}>キャンセル</button>
+            <button className="btn-danger" onClick={confirmDelete} disabled={busy}>
+              {busy ? '削除中...' : '削除する'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {toast.element}
     </div>
   )
 }
