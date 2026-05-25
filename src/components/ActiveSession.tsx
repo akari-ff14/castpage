@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { db } from '../lib/db'
 import { useSessionUpdates } from '../lib/useRealtimeSessions'
 import { fmtCurrency, fmtTime } from '../lib/format'
+import { Crown, RotateCw, Sparkles, Stop, Clock } from '../icons'
 import Modal from './Modal'
+import Tooltip from './Tooltip'
 import { useToast } from './Toast'
 import './ActiveSession.css'
 
@@ -191,7 +193,7 @@ export default function ActiveSession({ castName, onChanged }: Props) {
             label="接客種別"
             value={
               <span className={`badge ${session.接客種別 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
-                {session.接客種別 === 'vip' ? '✦ ' : ''}
+                {session.接客種別 === 'vip' && <Crown size={12} style={{ marginRight: 4, verticalAlign: '-2px' }} />}
                 {session.接客種別表示名 || session.接客種別}
               </span>
             }
@@ -202,9 +204,24 @@ export default function ActiveSession({ castName, onChanged }: Props) {
         </div>
       </div>
       <div className="btn-action-grid">
-        <button className="btn-extend" onClick={onExtend} disabled={busy}>↺ 延長 +30分</button>
-        <button className="btn-option" onClick={onOption} disabled={busy}>✦ オプション</button>
-        <button className="btn-finish" onClick={() => setFinishOpen(true)} disabled={busy}>■ 終了</button>
+        <Tooltip content="終了予定を30分のばす（料金加算）">
+          <button className="btn-extend" onClick={onExtend} disabled={busy}>
+            <RotateCw size={16} />
+            <span>延長 +30分</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="オプションを1回追加する（料金加算）">
+          <button className="btn-option" onClick={onOption} disabled={busy}>
+            <Sparkles size={16} />
+            <span>オプション</span>
+          </button>
+        </Tooltip>
+        <Tooltip content="この接客を終了する">
+          <button className="btn-finish" onClick={() => setFinishOpen(true)} disabled={busy}>
+            <Stop size={16} />
+            <span>終了</span>
+          </button>
+        </Tooltip>
       </div>
 
       {finishOpen && (
@@ -252,7 +269,10 @@ export default function ActiveSession({ castName, onChanged }: Props) {
 
       {reminderOpen && (
         <Modal onClose={() => setReminderOpen(false)}>
-          <h3>⏰ もうすぐ終了時刻です</h3>
+          <h3>
+            <Clock size={18} style={{ verticalAlign: '-3px', marginRight: 6 }} />
+            もうすぐ終了時刻です
+          </h3>
           <p>終了予定時間まで5分を切りました。延長または終了の準備をしてください。</p>
           <div className="modal-actions">
             <button className="btn-secondary" onClick={() => setReminderOpen(false)}>閉じる</button>

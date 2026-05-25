@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency, fmtTime } from '../lib/format'
 import { useActiveSessions } from '../lib/useRealtimeSessions'
+import { Crown, AlertTriangle } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './StartSessionForm.css'
@@ -211,12 +212,11 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
                 value={room}
                 onChange={(e) => setRoom(e.target.value)}
               >
-                <option value="">選択</option>
+                <option value="">選択してください</option>
                 {rooms.map((r) => {
                   const usage = roomUsage.get(r.name)
                   return (
                     <option key={r.name} value={r.name} disabled={!!usage}>
-                      {r.vip === 1 ? '✦ ' : ''}
                       {r.name}
                       {usage ? ` (使用中: ${usage.対応者})` : ''}
                     </option>
@@ -275,7 +275,8 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
               className={`badge ${serviceType === 'vip' ? 'badge-vip' : 'badge-normal'}`}
               style={{ marginLeft: 8, fontSize: 12 }}
             >
-              {serviceType === 'vip' ? '✦ VIP' : '通常'}
+              {serviceType === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
+              {serviceType === 'vip' ? 'VIP' : '通常'}
             </span>
           )}
         </div>
@@ -339,7 +340,10 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
 
       {blWarning && (
         <Modal onClose={() => setBlWarning(null)}>
-          <h3>⚠ ブラックリスト該当</h3>
+          <h3>
+            <AlertTriangle size={18} style={{ verticalAlign: '-3px', marginRight: 6, color: 'var(--red)' }} />
+            ブラックリスト該当
+          </h3>
           <p className="muted">以下の顧客がブラックリストに登録されています:</p>
           <ul className="bl-list">
             {blWarning.map((m) => (

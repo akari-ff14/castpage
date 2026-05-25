@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency } from '../lib/format'
+import { Calendar } from '../icons'
 import './RevenueTab.css'
 
 interface CastRevenue {
@@ -45,7 +46,10 @@ export default function RevenueTab() {
   return (
     <div className="revenue-tab">
       <div className="card revenue-header-card">
-        <div className="rev-business-day">📅 {data.businessDay}</div>
+        <div className="rev-business-day">
+          <Calendar size={15} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+          {data.businessDay}
+        </div>
         <button className="btn-secondary" onClick={load} disabled={loading}>
           {loading ? '...' : '更新'}
         </button>

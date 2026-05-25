@@ -95,7 +95,7 @@ export default function RoomAdmin() {
         <div key={r.id} className={`admin-card ${!r.active ? 'inactive' : ''}`}>
           <div className="admin-card-body">
             <div className="admin-card-title">
-              <strong>{r.vip ? '✦ ' : ''}{r.name}</strong>
+              <strong>{r.name}</strong>
               {r.vip && <span className="badge badge-vip">VIP</span>}
               {!r.active && <span className="badge-inactive">無効</span>}
             </div>

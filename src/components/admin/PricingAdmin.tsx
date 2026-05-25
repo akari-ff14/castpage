@@ -85,7 +85,7 @@ export default function PricingAdmin() {
       </div>
       <p className="muted small">
         ※ 接客種別 (normal/vip/option) のキー自体は変更できません。ラベル・価格・有効/無効のみ編集可能です。<br />
-        ※ 価格変更は **新規セッションから** 反映されます。既存のセッションは開始時の価格がスナップショットされています。
+        ※ 価格変更は <strong>新規の接客から</strong> 反映されます。既存の接客は開始時の価格がスナップショットされています。
       </p>
       {err && <p className="err">{err}</p>}
       {loading && <p className="muted">読み込み中...</p>}

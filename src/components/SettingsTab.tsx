@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency } from '../lib/format'
 import { applyTheme, getStoredTheme, type ThemeName } from '../lib/theme'
+import { Settings as SettingsIcon, ListChecks, Crown } from '../icons'
 import { useToast } from './Toast'
 import './SettingsTab.css'
 
@@ -61,7 +62,10 @@ export default function SettingsTab({ castName }: { castName: string }) {
   return (
     <div className="settings-tab">
       <div className="card">
-        <div className="card-title">⚙ テーマ</div>
+        <div className="card-title">
+          <SettingsIcon size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+          テーマ
+        </div>
         <div className="theme-selector">
           {THEMES.map((t) => (
             <button
@@ -81,7 +85,10 @@ export default function SettingsTab({ castName }: { castName: string }) {
       </div>
 
       <div className="card">
-        <div className="card-title">📋 マスタ情報（参照のみ）</div>
+        <div className="card-title">
+          <ListChecks size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+          マスタ情報（参照のみ）
+        </div>
 
         <h4 className="settings-section-h">料金</h4>
         <div className="settings-pricing">
@@ -105,7 +112,8 @@ export default function SettingsTab({ castName }: { castName: string }) {
         <div className="settings-tag-row">
           {rooms.length ? rooms.map((r) => (
             <span key={r.name} className={`settings-tag ${r.vip ? 'settings-tag-vip' : ''}`}>
-              {r.vip ? '✦ ' : ''}{r.name}
+              {r.vip && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
+              {r.name}
             </span>
           )) : <span className="muted">未登録</span>}
         </div>

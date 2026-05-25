@@ -7,6 +7,7 @@ import MagicLinkScreen from './components/MagicLinkScreen'
 import CastSelectionScreen from './components/CastSelectionScreen'
 import Sidebar, { type RouteId } from './components/Sidebar'
 import HomeView from './components/HomeView'
+import WelcomeModal from './components/WelcomeModal'
 import SessionTab from './components/SessionTab'
 import ReservationTab from './components/ReservationTab'
 import HistoryTab from './components/HistoryTab'
@@ -105,6 +106,8 @@ export default function App() {
   )
 }
 
+const WELCOMED_KEY = 'akari_welcomed'
+
 function Dashboard({
   castName,
   isAdmin,
@@ -118,9 +121,21 @@ function Dashboard({
 }) {
   const [route, setRoute] = useState<RouteId>('home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showWelcome, setShowWelcome] = useState(
+    () => localStorage.getItem(WELCOMED_KEY) !== '1',
+  )
 
   return (
     <div className="app-shell">
+      {showWelcome && (
+        <WelcomeModal
+          castName={castName}
+          onClose={() => {
+            localStorage.setItem(WELCOMED_KEY, '1')
+            setShowWelcome(false)
+          }}
+        />
+      )}
       <Sidebar
         current={route}
         onNavigate={setRoute}

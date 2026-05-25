@@ -7,6 +7,7 @@ import {
 } from '../../lib/db'
 import { useActiveSessions } from '../../lib/useRealtimeSessions'
 import { fmtCurrency, fmtDateTime, fmtTime } from '../../lib/format'
+import { Crown, AlertTriangle } from '../../icons'
 import Modal from '../Modal'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
@@ -33,7 +34,7 @@ export default function SessionAdmin() {
     setBusy(true)
     try {
       await forceEndSession(forcing.session_id)
-      toast.show(`${forcing.対応者} のセッションを強制終了しました`)
+      toast.show(`${forcing.対応者} の接客を強制終了しました`)
       setForcing(null)
       load()
     } catch (e) {
@@ -53,7 +54,7 @@ export default function SessionAdmin() {
         note: editing.備考,
         customer_names: editing.顧客名,
       })
-      toast.show('セッションを更新しました')
+      toast.show('接客を更新しました')
       setEditing(null)
       load()
     } catch (e) {
@@ -68,7 +69,7 @@ export default function SessionAdmin() {
     setBusy(true)
     try {
       await deleteSession(deleting.session_id)
-      toast.show('セッションを削除しました')
+      toast.show('接客を削除しました')
       setDeleting(null)
       load()
     } catch (e) {
@@ -81,19 +82,19 @@ export default function SessionAdmin() {
   return (
     <div className="admin-section">
       <div className="admin-header">
-        <h3>セッション管理</h3>
+        <h3>接客管理</h3>
         <button className="btn-secondary" onClick={load} disabled={loading}>
           {loading ? '...' : '更新'}
         </button>
       </div>
       <p className="muted small">
-        進行中のセッションを強制終了、または完了済みセッションを編集・削除できます。<br />
+        進行中の接客を強制終了、または完了済み接客を編集・削除できます。<br />
         強制終了は「完了」フラグを立てるだけで、収益はそのまま記録されます。
       </p>
 
       {loading && !active.length && <p className="muted">読み込み中...</p>}
       {!loading && !active.length && (
-        <div className="card empty-state">進行中のセッションはありません</div>
+        <div className="card empty-state">進行中の接客はありません</div>
       )}
 
       <h4 className="admin-section-h">進行中</h4>
@@ -103,7 +104,8 @@ export default function SessionAdmin() {
             <div className="admin-card-title">
               <strong>{s.対応者}</strong>
               <span className={`badge ${s.接客種別 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
-                {s.接客種別 === 'vip' ? '✦ ' : ''}{s.接客種別表示名}
+                {s.接客種別 === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
+                {s.接客種別表示名}
               </span>
             </div>
             <div className="admin-card-meta">
@@ -140,7 +142,7 @@ export default function SessionAdmin() {
       {/* 強制終了確認 */}
       {forcing && (
         <Modal onClose={() => !busy && setForcing(null)}>
-          <h3>セッションを強制終了しますか？</h3>
+          <h3>接客を強制終了しますか？</h3>
           <p className="muted">
             {forcing.対応者} / {forcing.ルーム || '—'} / {forcing.顧客名 || '—'}<br />
             開始: {fmtDateTime(forcing.開始時間)}
@@ -160,7 +162,7 @@ export default function SessionAdmin() {
       {/* 編集 */}
       {editing && (
         <Modal onClose={() => !busy && setEditing(null)}>
-          <h3>セッションを編集</h3>
+          <h3>接客を編集</h3>
           <p className="muted small">延長回数・オプション回数を変更すると、収益金が自動再計算されます。</p>
           <div className="form-group">
             <label className="form-label">顧客名</label>
@@ -219,12 +221,15 @@ export default function SessionAdmin() {
       {/* 削除確認 */}
       {deleting && (
         <Modal onClose={() => !busy && setDeleting(null)}>
-          <h3>セッションを削除しますか？</h3>
+          <h3>接客を削除しますか？</h3>
           <p className="muted">
             {deleting.対応者} / {deleting.ルーム || '—'} / {deleting.顧客名 || '—'}<br />
             収益: {fmtCurrency(deleting.収益金)}
           </p>
-          <p className="err">⚠ この操作は取り消せません。売上集計からも除外されます。</p>
+          <p className="err">
+            <AlertTriangle size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+            この操作は取り消せません。売上集計からも除外されます。
+          </p>
           <div className="modal-actions">
             <button className="btn-secondary" onClick={() => setDeleting(null)} disabled={busy}>キャンセル</button>
             <button className="btn-danger" onClick={doDelete} disabled={busy}>

@@ -70,7 +70,7 @@ export default function CastSelectionScreen({ onBound }: Props) {
         ))}
         <p className="muted ml-hint">
           一度選択すると、あなたのアカウント（メールアドレス）にそのキャストが紐付きます。
-          後で「↔」ボタンから変更できます。
+          後でサイドバー下部のキャスト切替ボタンから変更できます。
         </p>
         <button
           className="btn-secondary"

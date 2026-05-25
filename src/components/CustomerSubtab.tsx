@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtDate } from '../lib/format'
+import { AlertTriangle, Sparkles } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './CustomerSubtab.css'
@@ -149,7 +150,7 @@ export default function CustomerSubtab() {
             <div className="customer-name">
               {g.name}
               {g.records.length === 1 ? (
-                <span className="badge-new">🆕 新規</span>
+                <span className="badge-new"><Sparkles size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />新規</span>
               ) : (
                 <span className="visit-count">{g.records.length}回来店</span>
               )}
@@ -159,14 +160,18 @@ export default function CustomerSubtab() {
             </div>
           </div>
           <button className="btn-sm-bl" onClick={() => openRegBl(g.name)}>
-            ⚠ BL登録
+            <AlertTriangle size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
+            BL登録
           </button>
         </div>
       ))}
 
       {regBl && (
         <Modal onClose={() => !busy && setRegBl(null)}>
-          <h3>⚠ ブラックリスト登録</h3>
+          <h3>
+            <AlertTriangle size={18} style={{ verticalAlign: '-3px', marginRight: 6, color: 'var(--red)' }} />
+            ブラックリスト登録
+          </h3>
           <p className="muted">対象: <strong>{regBl}</strong></p>
           <div className="form-group">
             <label className="form-label">理由（任意）</label>

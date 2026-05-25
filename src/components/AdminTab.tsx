@@ -10,7 +10,7 @@ const SUBS: Array<{ id: AdminSubtab; label: string }> = [
   { id: 'cast', label: 'キャスト' },
   { id: 'room', label: 'ルーム' },
   { id: 'pricing', label: '料金' },
-  { id: 'session', label: 'セッション' },
+  { id: 'session', label: '接客' },
 ]
 
 export default function AdminTab() {

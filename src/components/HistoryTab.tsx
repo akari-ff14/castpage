@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db, deleteSession, getCastsAndRooms, getPricing, updateHistorySession } from '../lib/db'
 import { fmtCurrency, fmtDateTime, fmtTime } from '../lib/format'
+import { Crown, AlertTriangle } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './HistoryTab.css'
@@ -231,7 +232,7 @@ export default function HistoryTab({
         <div key={s.session_id} className="history-card">
           <div className="history-header">
             <span className={`badge ${s.接客種別 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
-              {s.接客種別 === 'vip' ? '✦ ' : ''}
+              {s.接客種別 === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
               {s.接客種別表示名 || s.接客種別}
             </span>
             <span className="history-revenue">{fmtCurrency(s.収益金)}</span>
@@ -388,7 +389,10 @@ export default function HistoryTab({
             {fmtDateTime(deleting.作成日時)} ｜ {deleting.対応者} ｜ {deleting.顧客名 || '—'}<br />
             収益: {fmtCurrency(deleting.収益金)}
           </p>
-          <p className="err">⚠ この操作は取り消せません。売上集計からも除外されます。</p>
+          <p className="err">
+            <AlertTriangle size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+            この操作は取り消せません。売上集計からも除外されます。
+          </p>
           <div className="modal-actions">
             <button className="btn-secondary" onClick={() => setDeleting(null)} disabled={busy}>キャンセル</button>
             <button className="btn-danger" onClick={confirmDelete} disabled={busy}>
