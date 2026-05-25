@@ -235,3 +235,26 @@
   border-color: var(--teal-border);
 }
 
+/* ===== サブタブのアイコン + グループ間セパレータ ===== */
+
+.subtab-btn .subtab-icon {
+  display: inline-flex;
+  vertical-align: middle;
+  margin-right: 6px;
+  opacity: 0.85;
+}
+
+.subtab-btn.active .subtab-icon {
+  opacity: 1;
+}
+
+.subtab-sep {
+  display: inline-block;
+  width: 1px;
+  height: 18px;
+  background: var(--border2);
+  margin: 0 var(--space-1, 4px);
+  flex-shrink: 0;
+  align-self: center;
+}
+

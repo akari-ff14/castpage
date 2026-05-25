@@ -5,33 +5,20 @@ import PricingAdmin from './admin/PricingAdmin'
 import SessionAdmin from './admin/SessionAdmin'
 import BudgetAdmin from './admin/BudgetAdmin'
 import InsightsAdmin from './admin/InsightsAdmin'
-
-type AdminSubtab = 'cast' | 'room' | 'pricing' | 'session' | 'budget' | 'insights'
-
-const SUBS: Array<{ id: AdminSubtab; label: string }> = [
-  { id: 'cast', label: 'キャスト' },
-  { id: 'room', label: 'ルーム' },
-  { id: 'pricing', label: '料金' },
-  { id: 'session', label: '接客' },
-  { id: 'budget', label: '予算' },
-  { id: 'insights', label: 'インサイト' },
-]
+import AdminHome from './admin/AdminHome'
+import AdminToolbar from './admin/AdminToolbar'
+import type { AdminSub } from './admin/adminTypes'
 
 export default function AdminTab() {
-  const [sub, setSub] = useState<AdminSubtab>('cast')
+  const [sub, setSub] = useState<AdminSub>('home')
+
+  if (sub === 'home') {
+    return <AdminHome onNavigate={setSub} />
+  }
+
   return (
     <div>
-      <nav className="subtab-nav admin-subtab-scroll">
-        {SUBS.map((s) => (
-          <button
-            key={s.id}
-            className={`subtab-btn ${sub === s.id ? 'active' : ''}`}
-            onClick={() => setSub(s.id)}
-          >
-            {s.label}
-          </button>
-        ))}
-      </nav>
+      <AdminToolbar current={sub} onNavigate={setSub} />
       {sub === 'cast' && <CastAdmin />}
       {sub === 'room' && <RoomAdmin />}
       {sub === 'pricing' && <PricingAdmin />}

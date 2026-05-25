@@ -1,0 +1,136 @@
+/* 管理ホーム — ダッシュボードカード + ツールバー */
+
+.admin-home {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 24px);
+}
+
+.admin-home-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2, 8px);
+  padding-bottom: var(--space-2, 8px);
+  border-bottom: 1px dashed var(--border);
+}
+
+.admin-home-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--gold);
+  font-size: var(--fs-md, 15px);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.admin-home-title svg {
+  opacity: 0.6;
+}
+
+.admin-home-refresh {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-dim);
+  padding: 6px 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.admin-home-refresh:hover {
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.admin-home-refresh:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.admin-home-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2, 8px);
+}
+
+.admin-home-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: var(--space-3, 12px);
+}
+
+@media (min-width: 640px) {
+  .admin-home-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (min-width: 960px) {
+  .admin-home-grid {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+.admin-home-kpi {
+  font-size: var(--fs-xl, 24px);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.2;
+}
+
+.admin-home-kpi.muted {
+  color: var(--text-dim);
+}
+
+.admin-home-kpi-sub {
+  font-size: var(--fs-xs, 12px);
+  color: var(--text-dim);
+  margin-top: 4px;
+}
+
+/* ── 強化タブバー (AdminToolbar) ── */
+
+.admin-toolbar {
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-2, 8px);
+  margin-bottom: var(--space-3, 12px);
+  flex-wrap: nowrap;
+}
+
+.admin-back-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  padding: 6px 12px;
+  border-radius: var(--radius-sm, 6px);
+  color: var(--text-dim);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm, 13px);
+  flex-shrink: 0;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.admin-back-btn:hover {
+  color: var(--text);
+  border-color: var(--border2);
+}
+
+.admin-toolbar-tabs {
+  flex: 1;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.admin-toolbar-tab-wrap {
+  display: inline-flex;
+  align-items: center;
+}

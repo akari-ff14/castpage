@@ -224,3 +224,35 @@ export const Search = (p: IconProps) => (
     <line x1="21" y1="21" x2="16.65" y2="16.65" />
   </svg>
 )
+
+export const Wallet = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M21 12V7H5a2 2 0 0 1 0-4h14v4" />
+    <path d="M3 5v14a2 2 0 0 0 2 2h16v-5" />
+    <path d="M18 12a2 2 0 0 0 0 4h4v-4z" />
+  </svg>
+)
+
+export const Tag = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M20.59 13.41 13.42 20.58a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+    <line x1="7" y1="7" x2="7.01" y2="7" />
+  </svg>
+)
+
+export const DoorOpen = (p: IconProps) => (
+  <svg {...base(p)}>
+    <path d="M13 4h3a2 2 0 0 1 2 2v14" />
+    <path d="M2 20h3" />
+    <path d="M13 20h9" />
+    <path d="M10 12v.01" />
+    <path d="M13 4.562v16.157a1 1 0 0 1-1.242.97L5 20V5.562a2 2 0 0 1 1.515-1.94l4-1A2 2 0 0 1 13 4.561z" />
+  </svg>
+)
+
+export const ArrowLeft = (p: IconProps) => (
+  <svg {...base(p)}>
+    <line x1="19" y1="12" x2="5" y2="12" />
+    <polyline points="12 19 5 12 12 5" />
+  </svg>
+)

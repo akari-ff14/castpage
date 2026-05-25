@@ -1329,3 +1329,52 @@ export const db = {
   call: dbCall,
 }
 
+// ============================================================
+// API: 管理ホーム用の軽量集計
+// ============================================================
+
+export interface AdminHomeStats {
+  activeCount: number    // 進行中セッション数
+  todayCount: number     // 今日完了したセッション数
+  monthCount: number     // 今月完了したセッション数
+  monthRevenue: number   // 今月完了セッションの売上合計
+}
+
+// 1ヶ月分の sessions (finished=true) だけを取得して今日 / 今月で派生集計。
+// + 進行中 (finished=false) は count のみ取得 (head)。
+export async function fetchAdminHomeStats(): Promise<AdminHomeStats> {
+  const now = new Date()
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString()
+
+  const [activeRes, monthRes] = await Promise.all([
+    supabase
+      .from('sessions')
+      .select('id', { count: 'exact', head: true })
+      .eq('finished', false),
+    supabase
+      .from('sessions')
+      .select('created_at, revenue')
+      .eq('finished', true)
+      .gte('created_at', monthStart),
+  ])
+
+  if (activeRes.error) throw activeRes.error
+  if (monthRes.error) throw monthRes.error
+
+  const rows = monthRes.data || []
+  let todayCount = 0
+  let monthRevenue = 0
+  for (const r of rows) {
+    monthRevenue += Number(r.revenue || 0)
+    if (r.created_at >= todayStart) todayCount += 1
+  }
+
+  return {
+    activeCount: activeRes.count || 0,
+    todayCount,
+    monthCount: rows.length,
+    monthRevenue,
+  }
+}
+
