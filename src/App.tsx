@@ -163,7 +163,7 @@ function Dashboard({
 
         <div className="app-content">
           {route === 'home' && <HomeView castName={castName} onNavigate={setRoute} />}
-          {route === 'session' && <SessionTab castName={castName} />}
+          {route === 'session' && <SessionTab castName={castName} onNavigate={(r) => setRoute(r)} />}
           {route === 'reservation' && <ReservationTab castName={castName} />}
           {route === 'history' && <HistoryTab castName={castName} isAdmin={isAdmin} />}
           {route === 'customer' && <CustomerSubtab />}

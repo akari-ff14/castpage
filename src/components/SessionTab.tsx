@@ -4,7 +4,13 @@ import ActiveSession from './ActiveSession'
 import StartSessionForm from './StartSessionForm'
 
 // 進行中接客があれば ActiveSession、なければ StartSessionForm を表示
-export default function SessionTab({ castName }: { castName: string }) {
+export default function SessionTab({
+  castName,
+  onNavigate,
+}: {
+  castName: string
+  onNavigate?: (route: 'history' | 'revenue') => void
+}) {
   const [hasActive, setHasActive] = useState<boolean | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -25,6 +31,7 @@ export default function SessionTab({ castName }: { castName: string }) {
       <ActiveSession
         castName={castName}
         onChanged={() => setRefreshKey((k) => k + 1)}
+        onNavigate={onNavigate}
       />
     )
   }

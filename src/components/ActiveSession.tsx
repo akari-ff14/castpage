@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { db } from '../lib/db'
 import { useSessionUpdates } from '../lib/useRealtimeSessions'
 import { fmtCurrency, fmtTime } from '../lib/format'
-import { Crown, RotateCw, Sparkles, Stop, Clock } from '../icons'
+import { Crown, RotateCw, Sparkles, Stop, Clock, ListChecks, TrendingUp, Play } from '../icons'
 import Modal from './Modal'
 import Tooltip from './Tooltip'
 import { useToast } from './Toast'
@@ -41,9 +41,10 @@ const POLL_INTERVAL_MS = 60 * 1000
 interface Props {
   castName: string
   onChanged?: () => void  // セッション開始/終了時に親に通知（StartSessionForm再表示用）
+  onNavigate?: (route: 'history' | 'revenue') => void  // 終了モーダルから他タブへ
 }
 
-export default function ActiveSession({ castName, onChanged }: Props) {
+export default function ActiveSession({ castName, onChanged, onNavigate }: Props) {
   const [session, setSession] = useState<ActiveSessionData | null>(null)
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -261,8 +262,42 @@ export default function ActiveSession({ castName, onChanged }: Props) {
           <div className="breakdown-row">
             <span>オプション（{breakdown.optionCount}回）</span><span>{fmtCurrency(breakdown.optionPrice)}</span>
           </div>
-          <div className="modal-actions">
-            <button className="btn-secondary" onClick={() => setBreakdown(null)}>閉じる</button>
+
+          <p className="muted small" style={{ marginTop: 16, marginBottom: 8, textAlign: 'center' }}>
+            このあと何をしますか？
+          </p>
+          <div className="breakdown-next-actions">
+            {onNavigate && (
+              <>
+                <button
+                  className="breakdown-next-btn"
+                  onClick={() => {
+                    setBreakdown(null)
+                    onNavigate('history')
+                  }}
+                >
+                  <ListChecks size={18} className="breakdown-next-icon" />
+                  <span className="breakdown-next-label">履歴を確認・編集</span>
+                </button>
+                <button
+                  className="breakdown-next-btn"
+                  onClick={() => {
+                    setBreakdown(null)
+                    onNavigate('revenue')
+                  }}
+                >
+                  <TrendingUp size={18} className="breakdown-next-icon" />
+                  <span className="breakdown-next-label">今日の売上を確認</span>
+                </button>
+              </>
+            )}
+            <button
+              className="breakdown-next-btn secondary"
+              onClick={() => setBreakdown(null)}
+            >
+              <Play size={16} className="breakdown-next-icon" />
+              <span className="breakdown-next-label">次の接客を準備</span>
+            </button>
           </div>
         </Modal>
       )}

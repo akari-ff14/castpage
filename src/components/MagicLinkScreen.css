@@ -90,3 +90,63 @@
   font-weight: 600;
   text-align: center;
 }
+
+/* ── Google OAuth ボタン ── */
+.btn-google {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  background: #ffffff;
+  color: #1a1a1a;
+  border: 1px solid #d8d8d8;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, box-shadow 0.15s;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.btn-google:hover:not(:disabled) {
+  background: #f5f5f5;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.btn-google:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ── 区切り「または」 ── */
+.ml-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin: 12px 0;
+}
+
+.ml-divider::before,
+.ml-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+
+.ml-form-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ml-form-inner .form-label {
+  font-size: 12px;
+  color: var(--text-dim);
+  margin: 0;
+}
