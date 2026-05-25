@@ -3,16 +3,50 @@
 // 全体方針:
 //   - Postgres Change イベント (INSERT/UPDATE/DELETE) を受け取ったら、
 //     ペイロードに依存せず該当データを再取得する（シンプルで堅牢）。
-//   - 1コンポーネント=1チャンネルだと購読数が増えるが、Free tier の
-//     上限は 200 同時接続なので3キャスト×タブ数程度なら余裕。
+//   - 同じチャンネル名で複数コンポーネントが購読するのを避けるため、
+//     useActiveSessions はモジュールレベルで1つのチャンネルを共有し、
+//     複数の subscriber (コールバック) に通知する singleton パターンを採用。
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback, useRef, useId } from 'react'
+import type { RealtimeChannel } from '@supabase/supabase-js'
 import { supabase } from './supabase'
 import { listAllActiveSessions, type SessionShape } from './db'
 
-// ========================================
+// ============================================================
+// シングルトン購読: 全コンポーネントで1つのチャンネルを共有
+// ============================================================
+
+type ChangeListener = () => void
+const _listeners = new Set<ChangeListener>()
+let _sharedChannel: RealtimeChannel | null = null
+
+function ensureSharedChannel() {
+  if (_sharedChannel) return
+  _sharedChannel = supabase
+    .channel('akari-sessions-shared')
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'sessions' },
+      () => {
+        // 全 subscriber に通知
+        _listeners.forEach((cb) => {
+          try { cb() } catch (e) { console.error('session listener error:', e) }
+        })
+      },
+    )
+    .subscribe()
+}
+
+function removeSharedChannelIfIdle() {
+  if (_listeners.size === 0 && _sharedChannel) {
+    supabase.removeChannel(_sharedChannel)
+    _sharedChannel = null
+  }
+}
+
+// ============================================================
 // 進行中セッション一覧 (全キャスト分)
-// ========================================
+// ============================================================
 export function useActiveSessions(): {
   sessions: SessionShape[]
   loading: boolean
@@ -39,33 +73,27 @@ export function useActiveSessions(): {
     mountedRef.current = true
     reload()
 
-    // Realtime 購読: sessions の任意の変更で再フェッチ
-    const channel = supabase
-      .channel('active-sessions')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'sessions' },
-        () => {
-          reload()
-        },
-      )
-      .subscribe()
+    // シングルトン購読に subscriber を追加
+    ensureSharedChannel()
+    const listener: ChangeListener = () => reload()
+    _listeners.add(listener)
 
     return () => {
       mountedRef.current = false
-      supabase.removeChannel(channel)
+      _listeners.delete(listener)
+      removeSharedChannelIfIdle()
     }
   }, [reload])
 
   return { sessions, loading, reload }
 }
 
-// ========================================
+// ============================================================
 // 単一セッションの変更を購読
-// 自分のセッションが管理者に編集された等を即時反映するため
-// ========================================
+// チャンネル名にコンポーネントごとのユニークIDを付与して衝突回避
+// ============================================================
 export function useSessionUpdates(sessionId: string | null | undefined, onChange: () => void) {
-  // onChange を ref で持って、毎レンダで購読を貼り直さないようにする
+  const instanceId = useId()
   const cbRef = useRef(onChange)
   useEffect(() => {
     cbRef.current = onChange
@@ -74,7 +102,7 @@ export function useSessionUpdates(sessionId: string | null | undefined, onChange
   useEffect(() => {
     if (!sessionId) return
     const channel = supabase
-      .channel(`session-${sessionId}`)
+      .channel(`session-${sessionId}-${instanceId}`)
       .on(
         'postgres_changes',
         {
@@ -89,5 +117,5 @@ export function useSessionUpdates(sessionId: string | null | undefined, onChange
     return () => {
       supabase.removeChannel(channel)
     }
-  }, [sessionId])
+  }, [sessionId, instanceId])
 }
