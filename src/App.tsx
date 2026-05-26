@@ -8,7 +8,7 @@ import CastSelectionScreen from './components/CastSelectionScreen'
 import Sidebar, { type RouteId } from './components/Sidebar'
 import HomeView from './components/HomeView'
 import WelcomeModal from './components/WelcomeModal'
-import SessionTab from './components/SessionTab'
+import SessionTab, { type SessionPreset } from './components/SessionTab'
 import ReservationTab from './components/ReservationTab'
 import HistoryTab from './components/HistoryTab'
 import CustomerSubtab from './components/CustomerSubtab'
@@ -118,6 +118,7 @@ function Dashboard({
   const [showWelcome, setShowWelcome] = useState(
     () => localStorage.getItem(WELCOMED_KEY) !== '1',
   )
+  const [sessionPreset, setSessionPreset] = useState<SessionPreset | null>(null)
 
   return (
     <div className="app-shell">
@@ -155,8 +156,23 @@ function Dashboard({
 
         <div className="app-content">
           {route === 'home' && <HomeView castName={castName} onNavigate={setRoute} />}
-          {route === 'session' && <SessionTab castName={castName} onNavigate={(r) => setRoute(r)} />}
-          {route === 'reservation' && <ReservationTab castName={castName} />}
+          {route === 'session' && (
+            <SessionTab
+              castName={castName}
+              onNavigate={(r) => setRoute(r)}
+              preset={sessionPreset}
+              onPresetConsumed={() => setSessionPreset(null)}
+            />
+          )}
+          {route === 'reservation' && (
+            <ReservationTab
+              castName={castName}
+              onStartSession={(preset) => {
+                setSessionPreset(preset)
+                setRoute('session')
+              }}
+            />
+          )}
           {route === 'history' && <HistoryTab castName={castName} isAdmin={isAdmin} />}
           {route === 'customer' && <CustomerSubtab />}
           {route === 'blacklist' && <BlacklistSubtab />}

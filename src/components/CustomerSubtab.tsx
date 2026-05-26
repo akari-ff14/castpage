@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtDate } from '../lib/format'
-import { AlertTriangle, Sparkles } from '../icons'
+import { AlertTriangle, Sparkles, Edit } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './CustomerSubtab.css'
@@ -25,6 +25,7 @@ type SortKey = 'last_visit' | 'visits_desc' | 'visits_asc'
 
 export default function CustomerSubtab() {
   const [all, setAll] = useState<CustomerRecord[]>([])
+  const [notes, setNotes] = useState<Map<string, string>>(new Map())
   const [casts, setCasts] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -34,16 +35,22 @@ export default function CustomerSubtab() {
   const [regBl, setRegBl] = useState<string | null>(null)
   const [blReason, setBlReason] = useState('')
   const [blNote, setBlNote] = useState('')
+  const [memoTarget, setMemoTarget] = useState<string | null>(null)
+  const [memoEdit, setMemoEdit] = useState('')
   const [busy, setBusy] = useState(false)
   const toast = useToast()
 
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await db.call<CustomerRecord[]>('getCustomers')
+    const [rCust, rNotes] = await Promise.all([
+      db.call<CustomerRecord[]>('getCustomers'),
+      db.call<Map<string, string>>('getAllCustomerNotes'),
+    ])
     setLoading(false)
-    if (r.ok) setAll(r.data || [])
-    else setErr(r.error)
+    if (rCust.ok) setAll(rCust.data || [])
+    else setErr(rCust.error)
+    if (rNotes.ok && rNotes.data instanceof Map) setNotes(rNotes.data)
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -82,6 +89,30 @@ export default function CustomerSubtab() {
     else list.sort((a, b) => (b.lastVisit?.getTime() || 0) - (a.lastVisit?.getTime() || 0))
     return list
   }, [all, castFilter, search, sort])
+
+  function openMemo(name: string) {
+    setMemoTarget(name)
+    setMemoEdit(notes.get(name) || '')
+  }
+
+  async function saveMemo() {
+    if (!memoTarget) return
+    setBusy(true)
+    const r = await db.call('saveCustomerNote', memoTarget, memoEdit.trim())
+    setBusy(false)
+    if (r.ok) {
+      setNotes((prev) => {
+        const next = new Map(prev)
+        if (memoEdit.trim()) next.set(memoTarget, memoEdit.trim())
+        else next.delete(memoTarget)
+        return next
+      })
+      toast.show('メモを保存しました')
+      setMemoTarget(null)
+    } else {
+      toast.show((r as { error: string }).error || '保存に失敗しました', 'err')
+    }
+  }
 
   function openRegBl(name: string) {
     setRegBl(name)
@@ -144,27 +175,64 @@ export default function CustomerSubtab() {
         <div className="card empty-state">該当する顧客がありません</div>
       )}
 
-      {groups.map((g) => (
-        <div key={g.name} className="customer-card">
-          <div className="customer-info">
-            <div className="customer-name">
-              {g.name}
-              {g.records.length === 1 ? (
-                <span className="badge-new"><Sparkles size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />新規</span>
-              ) : (
-                <span className="visit-count">{g.records.length}回来店</span>
-              )}
+      {groups.map((g) => {
+        const memo = notes.get(g.name)
+        return (
+          <div key={g.name} className="customer-card">
+            <div className="customer-info">
+              <div className="customer-name">
+                {g.name}
+                {g.records.length === 1 ? (
+                  <span className="badge-new"><Sparkles size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />新規</span>
+                ) : (
+                  <span className="visit-count">{g.records.length}回来店</span>
+                )}
+              </div>
+              <div className="customer-meta">
+                最終来店: {g.lastVisit ? fmtDate(g.lastVisit) : '—'} ｜ 担当: {g.casts.join('、') || '—'}
+              </div>
+              {memo && <div className="customer-note-preview">{memo}</div>}
             </div>
-            <div className="customer-meta">
-              最終来店: {g.lastVisit ? fmtDate(g.lastVisit) : '—'} ｜ 担当: {g.casts.join('、') || '—'}
+            <div className="customer-card-actions">
+              <button className="btn-sm-note" onClick={() => openMemo(g.name)}>
+                <Edit size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
+                メモ
+              </button>
+              <button className="btn-sm-bl" onClick={() => openRegBl(g.name)}>
+                <AlertTriangle size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
+                BL登録
+              </button>
             </div>
           </div>
-          <button className="btn-sm-bl" onClick={() => openRegBl(g.name)}>
-            <AlertTriangle size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
-            BL登録
-          </button>
-        </div>
-      ))}
+        )
+      })}
+
+      {memoTarget && (
+        <Modal onClose={() => !busy && setMemoTarget(null)}>
+          <h3>
+            <Edit size={18} style={{ verticalAlign: '-3px', marginRight: 6 }} />
+            顧客メモ
+          </h3>
+          <p className="muted">対象: <strong>{memoTarget}</strong></p>
+          <div className="form-group">
+            <textarea
+              className="form-input"
+              style={{ minHeight: 100 }}
+              value={memoEdit}
+              onChange={(e) => setMemoEdit(e.target.value)}
+              placeholder="好み、注意事項、常連情報など（空欄で削除）"
+            />
+          </div>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setMemoTarget(null)} disabled={busy}>
+              キャンセル
+            </button>
+            <button className="btn-primary" style={{ width: 'auto' }} onClick={saveMemo} disabled={busy}>
+              {busy ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </Modal>
+      )}
 
       {regBl && (
         <Modal onClose={() => !busy && setRegBl(null)}>

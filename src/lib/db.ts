@@ -1271,6 +1271,29 @@ export async function deleteSession(sessionId: string): Promise<void> {
 }
 
 // ============================================================
+// 顧客メモ (customer_notes テーブル)
+// ============================================================
+
+export async function getAllCustomerNotes(): Promise<Map<string, string>> {
+  const { data, error } = await supabase
+    .from('customer_notes')
+    .select('customer_name, memo')
+  if (error) throw error
+  return new Map((data || []).map((r) => [r.customer_name, r.memo]))
+}
+
+export async function saveCustomerNote(customerName: string, memo: string): Promise<void> {
+  if (!customerName) throw new Error('顧客名が必要です')
+  const { error } = await supabase
+    .from('customer_notes')
+    .upsert(
+      { customer_name: customerName, memo, updated_at: new Date().toISOString() },
+      { onConflict: 'customer_name' },
+    )
+  if (error) throw error
+}
+
+// ============================================================
 // AkariApi 互換のディスパッチャ — 既存タブの最小変更で移行
 // ============================================================
 
@@ -1310,6 +1333,9 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   addExpense,
   deleteExpense,
   getInsights,
+  // 顧客メモ
+  getAllCustomerNotes,
+  saveCustomerNote,
 }
 
 async function dbCall<T = unknown>(fn: string, ...args: unknown[]): Promise<DbResult<T>> {

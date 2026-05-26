@@ -23,9 +23,16 @@ interface BlMatch {
   reason?: string
 }
 
+export interface SessionPreset {
+  customerName: string
+  room: string
+}
+
 interface Props {
   castName: string
   onStarted: () => void
+  preset?: SessionPreset | null
+  onPresetConsumed?: () => void
 }
 
 // 予定時間ボタン群: value は 30分単位の口数
@@ -39,11 +46,13 @@ const DURATIONS = [
   { value: 6, label: '3時間' },
 ]
 
-export default function StartSessionForm({ castName, onStarted }: Props) {
+export default function StartSessionForm({ castName, onStarted, preset, onPresetConsumed }: Props) {
   const [rooms, setRooms] = useState<RoomData[]>([])
   const [pricing, setPricing] = useState<PricingEntry[]>([])
-  const [room, setRoom] = useState('')
-  const [customerNames, setCustomerNames] = useState<string[]>([''])
+  const [room, setRoom] = useState(preset?.room || '')
+  const [customerNames, setCustomerNames] = useState<string[]>(
+    preset?.customerName ? [preset.customerName] : [''],
+  )
   const [note, setNote] = useState('')
   const [presetSlots, setPresetSlots] = useState(0)
   const [busy, setBusy] = useState(false)
@@ -59,6 +68,11 @@ export default function StartSessionForm({ castName, onStarted }: Props) {
     }
     return m
   }, [activeSessions])
+
+  useEffect(() => {
+    if (preset) onPresetConsumed?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     (async () => {

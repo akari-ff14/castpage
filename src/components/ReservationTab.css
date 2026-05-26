@@ -60,6 +60,27 @@
   border-top: 1px dashed var(--border);
 }
 
+.btn-res-start {
+  background: var(--teal-bg);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+  border-radius: 8px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-res-start:hover {
+  background: var(--teal);
+  color: var(--bg);
+}
+
 .res-price-preview {
   background: var(--bg2);
   border: 1px solid var(--border);

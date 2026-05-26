@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db, type SessionShape, type ReservationShape, type RevenueStatus } from '../lib/db'
-import { useActiveSessions } from '../lib/useRealtimeSessions'
+import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
 import { fmtCurrency, fmtTime, jstToday } from '../lib/format'
 import {
   MessageSquare,
@@ -143,10 +143,28 @@ function ActiveSessionCard({
 }
 
 // ============================================================
-// カード2: 現在使用中のルーム
+// カード2: 現在使用中のルーム（残り時間タイマー付き）
 // ============================================================
+
+function roomTimerInfo(endTimeIso: string): { text: string; cls: string } {
+  const leftMs = new Date(endTimeIso).getTime() - Date.now()
+  if (leftMs <= 0) return { text: '超過', cls: 'overdue' }
+  const min = Math.floor(leftMs / 60000)
+  const sec = Math.floor((leftMs % 60000) / 1000)
+  const warning = leftMs <= 5 * 60 * 1000
+  return { text: `${min}:${String(sec).padStart(2, '0')}`, cls: warning ? 'warning' : '' }
+}
+
 function RoomUsageCard({ onNavigate }: { onNavigate: (id: RouteId) => void }) {
   const { sessions, loading } = useActiveSessions()
+  const [, setTick] = useState(0)
+
+  useEffect(() => {
+    if (sessions.length === 0) return
+    const t = setInterval(() => setTick((x) => x + 1), 1000)
+    return () => clearInterval(t)
+  }, [sessions.length])
+
   return (
     <StatusCard
       title="現在使用中のルーム"
@@ -161,13 +179,16 @@ function RoomUsageCard({ onNavigate }: { onNavigate: (id: RouteId) => void }) {
       )}
       {!loading && sessions.length > 0 && (
         <ul className="home-rooms">
-          {sessions.slice(0, 4).map((s) => (
-            <li key={s.session_id} className="home-rooms-item">
-              <span className="home-rooms-room">{s.ルーム || '—'}</span>
-              <span className="muted home-rooms-cast">{s.対応者}</span>
-              <span className="home-rooms-time">〜{fmtTime(s.対応終了時間)}</span>
-            </li>
-          ))}
+          {sessions.slice(0, 4).map((s) => {
+            const { text, cls } = roomTimerInfo(s.対応終了時間)
+            return (
+              <li key={s.session_id} className="home-rooms-item">
+                <span className="home-rooms-room">{s.ルーム || '—'}</span>
+                <span className="muted home-rooms-cast">{s.対応者}</span>
+                <span className={`home-rooms-timer${cls ? ` ${cls}` : ''}`}>{text}</span>
+              </li>
+            )
+          })}
           {sessions.length > 4 && (
             <li className="muted small">他 {sessions.length - 4} 件…</li>
           )}
@@ -190,25 +211,25 @@ function TodayReservationsCard({
   const [list, setList] = useState<ReservationShape[]>([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    (async () => {
-      const r = await db.call<ReservationShape[]>('getReservations')
-      setLoading(false)
-      if (!r.ok) return
-      const today = jstToday()
-      const mine = (r.data || []).filter((res) => {
-        if (res.キャスト名 !== castName) return false
-        // 予約日時を JST 日付に変換して比較
-        const d = new Date(res.予約日時)
-        if (isNaN(d.getTime())) return false
-        const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
-        const dateStr = `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(jst.getUTCDate()).padStart(2, '0')}`
-        return dateStr === today
-      })
-      mine.sort((a, b) => new Date(a.予約日時).getTime() - new Date(b.予約日時).getTime())
-      setList(mine)
-    })()
+  const load = useCallback(async () => {
+    const r = await db.call<ReservationShape[]>('getReservations')
+    setLoading(false)
+    if (!r.ok) return
+    const today = jstToday()
+    const mine = (r.data || []).filter((res) => {
+      if (res.キャスト名 !== castName) return false
+      const d = new Date(res.予約日時)
+      if (isNaN(d.getTime())) return false
+      const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
+      const dateStr = `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(jst.getUTCDate()).padStart(2, '0')}`
+      return dateStr === today
+    })
+    mine.sort((a, b) => new Date(a.予約日時).getTime() - new Date(b.予約日時).getTime())
+    setList(mine)
   }, [castName])
+
+  useEffect(() => { load() }, [load])
+  useRealtimeReservations(load)
 
   return (
     <StatusCard

@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency, fmtDateTime } from '../lib/format'
+import { useRealtimeReservations } from '../lib/useRealtimeSessions'
+import { Play } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
+import type { SessionPreset } from './StartSessionForm'
 import './ReservationTab.css'
 
 interface Reservation {
@@ -79,8 +82,10 @@ const emptyForm = (castName: string): FormState => ({
 
 export default function ReservationTab({
   castName,
+  onStartSession,
 }: {
   castName: string
+  onStartSession?: (preset: SessionPreset) => void
 }) {
   const [list, setList] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
@@ -110,6 +115,8 @@ export default function ReservationTab({
   useEffect(() => {
     load()
   }, [load])
+
+  useRealtimeReservations(load)
 
   useEffect(() => {
     (async () => {
@@ -269,6 +276,15 @@ export default function ReservationTab({
             )}
           </div>
           <div className="res-actions">
+            {onStartSession && (
+              <button
+                className="btn-res-start"
+                onClick={() => onStartSession({ customerName: r.顧客名, room: r.ルーム })}
+              >
+                <Play size={12} />
+                接客開始
+              </button>
+            )}
             <button className="btn-secondary" onClick={() => openEdit(r)}>編集</button>
             <button className="btn-danger" onClick={() => setDeleting(r)}>削除</button>
           </div>

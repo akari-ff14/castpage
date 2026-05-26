@@ -109,10 +109,23 @@
   font-size: 12px;
 }
 
-.home-rooms-time {
+.home-rooms-timer {
   font-size: 12px;
-  color: var(--text-dim);
+  font-weight: 700;
+  color: var(--teal);
   font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  min-width: 36px;
+  text-align: right;
+}
+
+.home-rooms-timer.warning {
+  color: var(--gold);
+  animation: home-pulse 1.4s ease-in-out infinite;
+}
+
+.home-rooms-timer.overdue {
+  color: var(--red);
 }
 
 /* 予約リスト */

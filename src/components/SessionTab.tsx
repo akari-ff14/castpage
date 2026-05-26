@@ -1,15 +1,21 @@
 import { useEffect, useState } from 'react'
 import { db } from '../lib/db'
 import ActiveSession from './ActiveSession'
-import StartSessionForm from './StartSessionForm'
+import StartSessionForm, { type SessionPreset } from './StartSessionForm'
+
+export type { SessionPreset }
 
 // 進行中接客があれば ActiveSession、なければ StartSessionForm を表示
 export default function SessionTab({
   castName,
   onNavigate,
+  preset,
+  onPresetConsumed,
 }: {
   castName: string
   onNavigate?: (route: 'history' | 'revenue') => void
+  preset?: SessionPreset | null
+  onPresetConsumed?: () => void
 }) {
   const [hasActive, setHasActive] = useState<boolean | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
@@ -40,6 +46,8 @@ export default function SessionTab({
     <StartSessionForm
       castName={castName}
       onStarted={() => setRefreshKey((k) => k + 1)}
+      preset={preset}
+      onPresetConsumed={onPresetConsumed}
     />
   )
 }
