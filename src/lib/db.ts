@@ -1293,6 +1293,22 @@ export async function saveCustomerNote(customerName: string, memo: string): Prom
   if (error) throw error
 }
 
+// 顧客リストから該当顧客の全来店記録 + メモを削除。
+// sessions は残るので売上集計や履歴には影響しない（あくまで顧客一覧の見た目をクリーンアップする操作）。
+export async function deleteCustomerVisits(customerName: string): Promise<void> {
+  if (!customerName) throw new Error('顧客名が必要です')
+  const { error: visitsErr } = await supabase
+    .from('customer_visits')
+    .delete()
+    .eq('customer_name', customerName)
+  if (visitsErr) throw visitsErr
+  const { error: notesErr } = await supabase
+    .from('customer_notes')
+    .delete()
+    .eq('customer_name', customerName)
+  if (notesErr) throw notesErr
+}
+
 // ============================================================
 // AkariApi 互換のディスパッチャ — 既存タブの最小変更で移行
 // ============================================================
@@ -1336,6 +1352,7 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   // 顧客メモ
   getAllCustomerNotes,
   saveCustomerNote,
+  deleteCustomerVisits,
 }
 
 async function dbCall<T = unknown>(fn: string, ...args: unknown[]): Promise<DbResult<T>> {

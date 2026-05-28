@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtDate } from '../lib/format'
-import { AlertTriangle, Sparkles, Edit } from '../icons'
+import { AlertTriangle, Sparkles, Edit, Trash } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './CustomerSubtab.css'
@@ -37,6 +37,7 @@ export default function CustomerSubtab() {
   const [blNote, setBlNote] = useState('')
   const [memoTarget, setMemoTarget] = useState<string | null>(null)
   const [memoEdit, setMemoEdit] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<CustomerGroup | null>(null)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
 
@@ -134,6 +135,21 @@ export default function CustomerSubtab() {
     else toast.show((r as { error: string }).error || '登録に失敗しました', 'err')
   }
 
+  async function confirmDelete() {
+    if (!deleteTarget) return
+    const name = deleteTarget.name
+    setBusy(true)
+    const r = await db.call('deleteCustomerVisits', name)
+    setBusy(false)
+    setDeleteTarget(null)
+    if (r.ok) {
+      toast.show(`「${name}」を顧客リストから削除しました`)
+      load()
+    } else {
+      toast.show((r as { error: string }).error || '削除に失敗しました', 'err')
+    }
+  }
+
   return (
     <div className="customer-subtab">
       <div className="card filter-card">
@@ -194,13 +210,32 @@ export default function CustomerSubtab() {
               {memo && <div className="customer-note-preview">{memo}</div>}
             </div>
             <div className="customer-card-actions">
-              <button className="btn-sm-note" onClick={() => openMemo(g.name)}>
+              <button
+                type="button"
+                className="btn-sm-note"
+                onClick={() => openMemo(g.name)}
+                title="メモを編集"
+              >
                 <Edit size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
                 メモ
               </button>
-              <button className="btn-sm-bl" onClick={() => openRegBl(g.name)}>
-                <AlertTriangle size={12} style={{ verticalAlign: '-1px', marginRight: 4 }} />
-                BL登録
+              <button
+                type="button"
+                className="btn-icon-ghost"
+                onClick={() => openRegBl(g.name)}
+                aria-label="BLに登録"
+                title="BLに登録"
+              >
+                <AlertTriangle size={14} />
+              </button>
+              <button
+                type="button"
+                className="btn-icon-ghost"
+                onClick={() => setDeleteTarget(g)}
+                aria-label="顧客リストから削除"
+                title="顧客リストから削除"
+              >
+                <Trash size={14} />
               </button>
             </div>
           </div>
@@ -266,6 +301,30 @@ export default function CustomerSubtab() {
             </button>
             <button className="btn-danger" onClick={confirmRegBl} disabled={busy}>
               {busy ? '登録中...' : '登録'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {deleteTarget && (
+        <Modal onClose={() => !busy && setDeleteTarget(null)}>
+          <h3>
+            <Trash size={18} style={{ verticalAlign: '-3px', marginRight: 6, color: 'var(--red)' }} />
+            顧客リストから削除
+          </h3>
+          <p className="muted">
+            対象: <strong>{deleteTarget.name}</strong>（{deleteTarget.records.length}回来店）
+          </p>
+          <p className="muted small" style={{ marginTop: 8 }}>
+            この顧客の来店記録とメモを顧客リストから削除します。<br />
+            接客履歴（売上）には影響しません。
+          </p>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setDeleteTarget(null)} disabled={busy}>
+              キャンセル
+            </button>
+            <button className="btn-danger" onClick={confirmDelete} disabled={busy}>
+              {busy ? '削除中...' : '削除する'}
             </button>
           </div>
         </Modal>
