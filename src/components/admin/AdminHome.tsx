@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import StatusCard from '../StatusCard'
+import ActivityFeed from '../ActivityFeed'
 import {
   fetchAdminHomeStats,
   getExpenses,
@@ -213,6 +214,8 @@ export default function AdminHome({ onNavigate }: Props) {
           </StatusCard>
         </div>
       </section>
+
+      <ActivityFeed limit={20} />
     </div>
   )
 }

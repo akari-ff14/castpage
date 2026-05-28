@@ -79,6 +79,17 @@ export interface FinishBreakdown {
   optionCount: number
 }
 
+export type ActivityType = 'start' | 'end' | 'extend' | 'option'
+
+export interface ActivityLog {
+  id: string
+  type: ActivityType
+  cast_name: string
+  customer_name: string | null
+  session_id: string | null
+  created_at: string
+}
+
 export interface CastRevenue {
   cast: string
   guarantee: number
@@ -348,6 +359,41 @@ export async function checkBlacklist(name: string): Promise<Array<{ name: string
 // API: セッション操作
 // ============================================================
 
+// ============================================================
+// アクティビティログ
+// ============================================================
+
+// ログ書き込み (失敗してもセッション操作は成功扱いにするため例外を握り潰す)
+async function logActivity(
+  type: ActivityType,
+  castName: string,
+  sessionId: string | null,
+  customerName: string | null,
+  castId?: string | null,
+): Promise<void> {
+  try {
+    await supabase.from('activity_logs').insert({
+      type,
+      cast_id: castId ?? null,
+      cast_name: castName,
+      customer_name: customerName,
+      session_id: sessionId,
+    })
+  } catch (e) {
+    console.warn('logActivity failed:', e)
+  }
+}
+
+export async function getActivityLogs(limit = 20): Promise<ActivityLog[]> {
+  const { data, error } = await supabase
+    .from('activity_logs')
+    .select('id, type, cast_name, customer_name, session_id, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  if (error) throw error
+  return (data || []) as ActivityLog[]
+}
+
 export async function startSession(payload: {
   castName: string
   room: string
@@ -404,6 +450,7 @@ export async function startSession(payload: {
       })),
     )
   }
+  await logActivity('start', payload.castName, inserted.id, joined || null, cId)
   return sessionRowToShape(inserted as unknown as SessionRow, pricing)
 }
 
@@ -411,7 +458,7 @@ export async function extendSession(sessionId: string): Promise<SessionShape> {
   const pricing = await loadPricing()
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, base_price, customer_count, extend_count, ended_at, revenue, finished')
+    .select('id, base_price, customer_count, customer_names, extend_count, ended_at, revenue, finished, cast_id, cast:casts(name)')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -430,6 +477,8 @@ export async function extendSession(sessionId: string): Promise<SessionShape> {
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
+  const castName = (cur.cast as { name?: string } | null)?.name || ''
+  await logActivity('extend', castName, sessionId, cur.customer_names || null, cur.cast_id)
   return sessionRowToShape(data as unknown as SessionRow, pricing)
 }
 
@@ -437,7 +486,7 @@ export async function addOption(sessionId: string): Promise<SessionShape> {
   const pricing = await loadPricing()
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, option_price, option_count, revenue, finished')
+    .select('id, option_price, option_count, revenue, finished, customer_names, cast_id, cast:casts(name)')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -453,6 +502,8 @@ export async function addOption(sessionId: string): Promise<SessionShape> {
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
+  const castName = (cur.cast as { name?: string } | null)?.name || ''
+  await logActivity('option', castName, sessionId, cur.customer_names || null, cur.cast_id)
   return sessionRowToShape(data as unknown as SessionRow, pricing)
 }
 
@@ -462,7 +513,7 @@ export async function finishSession(payload: {
 }): Promise<{ breakdown: FinishBreakdown }> {
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, base_price, option_price, extend_count, option_count, customer_count, revenue, finished')
+    .select('id, base_price, option_price, extend_count, option_count, customer_count, revenue, finished, customer_names, cast_id, cast:casts(name)')
     .eq('id', payload.sessionId)
     .single()
   if (e1) throw e1
@@ -472,6 +523,9 @@ export async function finishSession(payload: {
   if (payload.note !== undefined) updates.note = payload.note
   const { error } = await supabase.from('sessions').update(updates).eq('id', payload.sessionId)
   if (error) throw error
+
+  const castName = (cur.cast as { name?: string } | null)?.name || ''
+  await logActivity('end', castName, payload.sessionId, cur.customer_names || null, cur.cast_id)
 
   const basePrice = Number(cur.base_price)
   const optPrice = Number(cur.option_price)
@@ -1353,6 +1407,8 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   getAllCustomerNotes,
   saveCustomerNote,
   deleteCustomerVisits,
+  // アクティビティログ
+  getActivityLogs,
 }
 
 async function dbCall<T = unknown>(fn: string, ...args: unknown[]): Promise<DbResult<T>> {

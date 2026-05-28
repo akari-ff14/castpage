@@ -141,6 +141,54 @@ export function useRealtimeReservations(onChanged: () => void) {
 }
 
 // ============================================================
+// アクティビティログの変更を購読（singleton パターン）
+// ============================================================
+
+type ActivityChangeListener = () => void
+const _activityListeners = new Set<ActivityChangeListener>()
+let _activitySharedChannel: RealtimeChannel | null = null
+
+function ensureActivityChannel() {
+  if (_activitySharedChannel) return
+  _activitySharedChannel = supabase
+    .channel('akari-activity-logs-shared')
+    .on(
+      'postgres_changes',
+      { event: 'INSERT', schema: 'public', table: 'activity_logs' },
+      () => {
+        _activityListeners.forEach((cb) => {
+          try { cb() } catch (e) { console.error('activity listener error:', e) }
+        })
+      },
+    )
+    .subscribe()
+}
+
+function removeActivityChannelIfIdle() {
+  if (_activityListeners.size === 0 && _activitySharedChannel) {
+    supabase.removeChannel(_activitySharedChannel)
+    _activitySharedChannel = null
+  }
+}
+
+export function useRealtimeActivityLogs(onChanged: () => void) {
+  const cbRef = useRef(onChanged)
+  useEffect(() => {
+    cbRef.current = onChanged
+  }, [onChanged])
+
+  useEffect(() => {
+    ensureActivityChannel()
+    const listener: ActivityChangeListener = () => cbRef.current()
+    _activityListeners.add(listener)
+    return () => {
+      _activityListeners.delete(listener)
+      removeActivityChannelIfIdle()
+    }
+  }, [])
+}
+
+// ============================================================
 // 単一セッションの変更を購読
 // ============================================================
 

@@ -1,0 +1,98 @@
+.activity-feed {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  margin-top: 16px;
+}
+
+.activity-feed-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.activity-feed-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.activity-feed-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border-left: 2px solid var(--border);
+  background: transparent;
+  line-height: 1.4;
+}
+
+.activity-feed-time {
+  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--text-dim);
+  font-weight: 600;
+}
+
+.activity-feed-icon {
+  flex-shrink: 0;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.activity-feed-msg {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* タイプ別の差し色 (border-left + icon色) */
+.activity-feed-item.activity-start {
+  border-left-color: var(--green);
+}
+.activity-feed-item.activity-start .activity-feed-icon {
+  color: var(--green);
+  background: var(--green-bg);
+}
+
+.activity-feed-item.activity-end {
+  border-left-color: var(--text-dim);
+}
+.activity-feed-item.activity-end .activity-feed-icon {
+  color: var(--text-dim);
+  background: var(--border);
+}
+
+.activity-feed-item.activity-extend {
+  border-left-color: var(--teal);
+}
+.activity-feed-item.activity-extend .activity-feed-icon {
+  color: var(--teal);
+  background: var(--teal-bg);
+}
+
+.activity-feed-item.activity-option {
+  border-left-color: var(--gold);
+}
+.activity-feed-item.activity-option .activity-feed-icon {
+  color: var(--gold);
+  background: var(--gold-bg, rgba(200, 155, 60, 0.12));
+}

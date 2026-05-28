@@ -11,6 +11,7 @@ import {
   Clock,
 } from '../icons'
 import StatusCard from './StatusCard'
+import ActivityFeed from './ActivityFeed'
 import type { RouteId } from './Sidebar'
 import './HomeView.css'
 
@@ -33,6 +34,8 @@ export default function HomeView({ castName, onNavigate }: Props) {
         <TodayReservationsCard castName={castName} onNavigate={onNavigate} />
         <TodayRevenueCard castName={castName} onNavigate={onNavigate} />
       </div>
+
+      <ActivityFeed limit={10} />
     </div>
   )
 }
