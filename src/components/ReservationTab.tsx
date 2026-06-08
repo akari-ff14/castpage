@@ -179,8 +179,10 @@ export default function ReservationTab({
   const timeOptions = timeVal && !TIME_OPTIONS.includes(timeVal)
     ? [timeVal, ...TIME_OPTIONS]
     : TIME_OPTIONS
+  // 日付・時刻はどちらか片方だけ選んだ状態でも保持できるよう、
+  // "YYYY-MM-DDTHH:mm" 形式で空の側を許容する（両方空のときだけ ''）
   const setDateTime = (date: string, time: string) =>
-    setForm((f) => ({ ...f, datetime: date ? (time ? `${date}T${time}` : date) : '' }))
+    setForm((f) => ({ ...f, datetime: date || time ? `${date}T${time}` : '' }))
 
   async function save() {
     if (!form.castName) { toast.show('キャスト名が必要です', 'err'); return }
