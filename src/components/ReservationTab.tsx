@@ -45,13 +45,21 @@ function toLocalInput(iso: string): string {
   return jst.toISOString().slice(0, 16)
 }
 
-// 5分刻みの時刻候補 (00:00 〜 23:55)
+// 営業時間帯（開始〜終了、終了が開始より小さい場合は翌日にまたぐ夜間営業扱い）
+// 朝の時間（4:00〜14:00）は予約しないので候補から除外する
+const OPEN_MIN = 14 * 60   // 14:00 開始
+const CLOSE_MIN = 4 * 60   // 翌 4:00 終了（この時刻は含まない）
+
+// 5分刻みの時刻候補。営業開始時刻から順に並べ、深夜帯（翌日分）は末尾に来る
 const TIME_OPTIONS: string[] = (() => {
   const out: string[] = []
-  for (let h = 0; h < 24; h++) {
-    for (let m = 0; m < 60; m += 5) {
-      out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-    }
+  // 営業が日をまたぐ場合の総分数（OPEN→CLOSE）
+  const span = CLOSE_MIN > OPEN_MIN ? CLOSE_MIN - OPEN_MIN : 24 * 60 - OPEN_MIN + CLOSE_MIN
+  for (let i = 0; i < span; i += 5) {
+    const min = (OPEN_MIN + i) % (24 * 60)
+    const h = Math.floor(min / 60)
+    const m = min % 60
+    out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
   }
   return out
 })()
