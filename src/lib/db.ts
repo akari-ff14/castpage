@@ -281,7 +281,7 @@ export async function getReservations(): Promise<ReservationShape[]> {
   const { data, error } = await supabase
     .from('reservations')
     .select('id, customer_name, reservation_type, reservation_price, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
-    .order('reserved_at', { ascending: true })
+    .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
     reservation_id: r.id,

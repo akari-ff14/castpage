@@ -45,6 +45,17 @@ function toLocalInput(iso: string): string {
   return jst.toISOString().slice(0, 16)
 }
 
+// 5分刻みの時刻候補 (00:00 〜 23:55)
+const TIME_OPTIONS: string[] = (() => {
+  const out: string[] = []
+  for (let h = 0; h < 24; h++) {
+    for (let m = 0; m < 60; m += 5) {
+      out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
+    }
+  }
+  return out
+})()
+
 // datetime-local input value (JST) → UTC ISO
 function fromLocalInput(local: string): string {
   if (!local) return ''
@@ -159,9 +170,23 @@ export default function ReservationTab({
   const pricingEntry = pricing.find((p) => p.key === form.pricingKey)
   const calcPrice = pricingEntry ? pricingEntry.price * (form.pricingQty || 0) : 0
 
+  // form.datetime ("YYYY-MM-DDTHH:mm") を 日付 / 時刻 に分解して扱う
+  const [dateVal, timeVal] = (() => {
+    const [d = '', t = ''] = form.datetime.split('T')
+    return [d, t]
+  })()
+  // 編集時、既存データが5分刻みでない場合でも選べるよう先頭に補う
+  const timeOptions = timeVal && !TIME_OPTIONS.includes(timeVal)
+    ? [timeVal, ...TIME_OPTIONS]
+    : TIME_OPTIONS
+  const setDateTime = (date: string, time: string) =>
+    setForm((f) => ({ ...f, datetime: date ? (time ? `${date}T${time}` : date) : '' }))
+
   async function save() {
     if (!form.castName) { toast.show('キャスト名が必要です', 'err'); return }
-    if (!form.datetime) { toast.show('予約日時が必要です', 'err'); return }
+    const [dPart, tPart] = form.datetime.split('T')
+    if (!dPart) { toast.show('予約日が必要です', 'err'); return }
+    if (!tPart) { toast.show('予約時刻が必要です', 'err'); return }
     setBusy(true)
     const payload = {
       ...(form.reservation_id ? { reservationId: form.reservation_id } : {}),
@@ -348,14 +373,29 @@ export default function ReservationTab({
               placeholder="顧客名"
             />
           </div>
-          <div className="form-group">
-            <label className="form-label">予約日時</label>
-            <input
-              type="datetime-local"
-              className="form-input"
-              value={form.datetime}
-              onChange={(e) => setForm((f) => ({ ...f, datetime: e.target.value }))}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">予約日</label>
+              <input
+                type="date"
+                className="form-input"
+                value={dateVal}
+                onChange={(e) => setDateTime(e.target.value, timeVal)}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">時刻（5分刻み）</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={timeVal}
+                  onChange={(e) => setDateTime(dateVal, e.target.value)}
+                >
+                  <option value="">--:--</option>
+                  {timeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
           <div className="form-row">
             <div className="form-group">

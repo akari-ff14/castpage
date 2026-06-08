@@ -42,8 +42,14 @@ export default function App() {
     return () => subscription.unsubscribe()
   }, [])
 
+  // session オブジェクトはタブ復帰やトークン更新のたびに新しい参照で
+  // 差し替わる。ユーザーが変わったときだけキャスト情報/設定を読み直すよう、
+  // user.id を依存にする（さもないと画面復帰のたびに全画面ローディングが走り
+  // Dashboard が再マウント→全タブ再読込されてしまう）
+  const userId = session?.user?.id ?? null
+
   useEffect(() => {
-    if (!session) {
+    if (!userId) {
       setCastName(null)
       setIsAdmin(false)
       return
@@ -59,15 +65,15 @@ export default function App() {
         setIsAdmin(false)
       })
       .finally(() => setCastLoading(false))
-  }, [session])
+  }, [userId])
 
   useEffect(() => {
-    if (!session) return
+    if (!userId) return
     (async () => {
       const r = await db.call<{ theme?: ThemeName }>('getUserSettings')
       if (r.ok && r.data?.theme) applyTheme(r.data.theme)
     })()
-  }, [session])
+  }, [userId])
 
   if (authLoading || (session && castLoading)) {
     return (
