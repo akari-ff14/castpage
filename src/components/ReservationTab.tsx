@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db } from '../lib/db'
-import { fmtCurrency, fmtDateTime } from '../lib/format'
+import { fmtCurrency, fmtDateTime, fmtBizTime } from '../lib/format'
 import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
-import { Play } from '../icons'
+import { Play, Clock } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import GanttTimeline from './GanttTimeline'
@@ -137,6 +137,23 @@ export default function ReservationTab({
 
   // 各キャストの稼働状況（誰が何時から何時まで対応か）をリアルタイム取得
   const { sessions: activeSessions } = useActiveSessions()
+
+  // 対応可能になる時刻 = 対応終了時間 + 10分インターバル
+  const INTERVAL_MIN = 10
+  const availability = [...activeSessions]
+    .map((s) => {
+      const endMs = new Date(s.対応終了時間).getTime()
+      return {
+        session_id: s.session_id,
+        cast: s.対応者,
+        endMs,
+        availMs: endMs + INTERVAL_MIN * 60 * 1000,
+        customer: s.顧客名 || '',
+        room: s.ルーム || '',
+      }
+    })
+    .filter((a) => !isNaN(a.endMs))
+    .sort((a, b) => a.availMs - b.availMs)
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -288,6 +305,29 @@ export default function ReservationTab({
             {loading ? '...' : '更新'}
           </button>
         </div>
+      </div>
+
+      <div className="card avail-card">
+        <div className="avail-head">
+          <Clock size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+          対応可能になる時刻（終了＋{INTERVAL_MIN}分インターバル）
+        </div>
+        {availability.length === 0 ? (
+          <p className="muted small" style={{ margin: 0 }}>現在 対応中のキャストはいません（全員 対応可能）</p>
+        ) : (
+          <div className="avail-list">
+            {availability.map((a) => (
+              <div key={a.session_id} className="avail-row">
+                <span className="avail-cast">{a.cast}</span>
+                <span className="avail-time">{fmtBizTime(a.availMs)}〜</span>
+                <span className="avail-meta muted">
+                  対応 {fmtBizTime(a.endMs)} 終了
+                  {a.room ? ` / ${a.room}` : ''}{a.customer ? ` / ${a.customer}` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <GanttTimeline

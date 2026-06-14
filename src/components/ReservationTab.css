@@ -1,3 +1,57 @@
+/* 対応可能になる時刻パネル */
+.avail-card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+}
+
+.avail-head {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--teal);
+  margin-bottom: 10px;
+}
+
+.avail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.avail-row {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 7px 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--teal);
+  border-radius: 8px;
+}
+
+.avail-cast {
+  font-weight: 700;
+  color: var(--text);
+  flex-shrink: 0;
+  min-width: 5em;
+}
+
+.avail-time {
+  font-weight: 800;
+  font-size: 16px;
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+  flex-shrink: 0;
+}
+
+.avail-meta {
+  font-size: 12px;
+  margin-left: auto;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .btn-add-top {
   width: 100%;
   padding: 12px;

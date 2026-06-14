@@ -171,6 +171,20 @@
   border-style: solid;
 }
 
+/* 対応終了後のインターバル（次の対応可能まで） */
+.gantt-bar-interval {
+  z-index: 1;
+  border: none;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(150, 150, 150, 0.28),
+    rgba(150, 150, 150, 0.28) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  border-radius: 4px;
+}
+
 .gantt-bar-time {
   font-size: 10px;
   font-weight: 700;
@@ -212,6 +226,15 @@
   display: inline-block;
 }
 .swatch-session { background: var(--teal-bg); border: 1.5px solid var(--teal-border); }
+.swatch-interval {
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(150, 150, 150, 0.45),
+    rgba(150, 150, 150, 0.45) 3px,
+    transparent 3px,
+    transparent 6px
+  );
+}
 .swatch-reservation { background: rgba(232, 192, 96, 0.14); border: 1.5px dashed var(--gold); }
 .swatch-now { width: 3px; background: var(--red, #e2536a); border-radius: 2px; }
 

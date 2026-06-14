@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import { fmtTime } from '../lib/format'
+import { fmtBizTime } from '../lib/format'
 import type { SessionShape } from '../lib/db'
 import './GanttTimeline.css'
 
@@ -16,7 +16,7 @@ export interface GanttReservation {
 
 interface Bar {
   id: string
-  kind: 'session' | 'reservation'
+  kind: 'session' | 'reservation' | 'interval'
   startMs: number
   endMs: number
   leftPct: number
@@ -37,6 +37,7 @@ const WINDOW_HOURS = 5             // 表示枠: 21:00 〜 26:00（翌2:00）
 const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000
 const GRID_STEP_MIN = 30           // 目盛り（グリッド線）は30分刻み
 const RESERVATION_DEFAULT_MIN = 60 // 対応時間が無い場合の仮の枠
+const INTERVAL_MIN = 10            // 対応終了後のインターバル（次の対応可能まで）
 
 // offsetDays 日ぶんずらした「営業日」の開始時刻（その日の 21:00 JST）を UTC で返す
 function businessDayStart(offsetDays: number): Date {
@@ -111,17 +112,33 @@ export default function GanttTimeline({
       const endMs = new Date(s.対応終了時間).getTime()
       if (isNaN(startMs) || isNaN(endMs)) continue
       const c = clampBar(startMs, endMs)
-      if (!c) continue
-      ensure(s.対応者).push({
-        id: `s-${s.session_id}`,
-        kind: 'session',
-        startMs,
-        endMs,
-        leftPct: c.left,
-        widthPct: c.width,
-        customer: s.顧客名 || '—',
-        room: s.ルーム || '',
-      })
+      if (c) {
+        ensure(s.対応者).push({
+          id: `s-${s.session_id}`,
+          kind: 'session',
+          startMs,
+          endMs,
+          leftPct: c.left,
+          widthPct: c.width,
+          customer: s.顧客名 || '—',
+          room: s.ルーム || '',
+        })
+      }
+      // 対応終了後の10分インターバル（この後から対応可能）
+      const intEnd = endMs + INTERVAL_MIN * 60 * 1000
+      const ci = clampBar(endMs, intEnd)
+      if (ci) {
+        ensure(s.対応者).push({
+          id: `i-${s.session_id}`,
+          kind: 'interval',
+          startMs: endMs,
+          endMs: intEnd,
+          leftPct: ci.left,
+          widthPct: ci.width,
+          customer: '',
+          room: '',
+        })
+      }
     }
 
     // 予約
@@ -211,21 +228,30 @@ export default function GanttTimeline({
                 {nowPct !== null && (
                   <span className="gantt-now" style={{ left: `${nowPct}%` }} />
                 )}
-                {row.bars.map((bar) => (
-                  <div
-                    key={bar.id}
-                    className={`gantt-bar gantt-bar-${bar.kind}${bar.resType === '当日' ? ' is-sameday' : ''}`}
-                    style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
-                    title={`${row.cast}｜${bar.customer}${bar.room ? `（${bar.room}）` : ''}\n${fmtTime(bar.startMs)}〜${fmtTime(bar.endMs)}（${Math.round((bar.endMs - bar.startMs) / 60000)}分）${
-                      bar.kind === 'reservation' ? ' ※予約' : ''
-                    }`}
-                  >
-                    <span className="gantt-bar-time">
-                      {fmtTime(bar.startMs)}〜{fmtTime(bar.endMs)}
-                    </span>
-                    <span className="gantt-bar-cust">{bar.customer}</span>
-                  </div>
-                ))}
+                {row.bars.map((bar) =>
+                  bar.kind === 'interval' ? (
+                    <div
+                      key={bar.id}
+                      className="gantt-bar gantt-bar-interval"
+                      style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
+                      title={`インターバル ${INTERVAL_MIN}分\n${fmtBizTime(bar.endMs)}〜 対応可能`}
+                    />
+                  ) : (
+                    <div
+                      key={bar.id}
+                      className={`gantt-bar gantt-bar-${bar.kind}${bar.resType === '当日' ? ' is-sameday' : ''}`}
+                      style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
+                      title={`${row.cast}｜${bar.customer}${bar.room ? `（${bar.room}）` : ''}\n${fmtBizTime(bar.startMs)}〜${fmtBizTime(bar.endMs)}（${Math.round((bar.endMs - bar.startMs) / 60000)}分）${
+                        bar.kind === 'reservation' ? ' ※予約' : ''
+                      }`}
+                    >
+                      <span className="gantt-bar-time">
+                        {fmtBizTime(bar.startMs)}〜{fmtBizTime(bar.endMs)}
+                      </span>
+                      <span className="gantt-bar-cust">{bar.customer}</span>
+                    </div>
+                  ),
+                )}
               </div>
             </div>
           ))}
@@ -234,6 +260,7 @@ export default function GanttTimeline({
 
       <div className="gantt-legend">
         <span className="gantt-legend-item"><span className="swatch swatch-session" />対応中</span>
+        <span className="gantt-legend-item"><span className="swatch swatch-interval" />インターバル({INTERVAL_MIN}分)</span>
         <span className="gantt-legend-item"><span className="swatch swatch-reservation" />予約</span>
         {nowPct !== null && <span className="gantt-legend-item"><span className="swatch swatch-now" />現在</span>}
       </div>
