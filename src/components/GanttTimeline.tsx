@@ -147,18 +147,34 @@ export default function GanttTimeline({
       if (isNaN(startMs)) continue
       const endMs = startMs + (Number(r.予約時間) || RESERVATION_DEFAULT_MIN) * 60 * 1000
       const c = clampBar(startMs, endMs)
-      if (!c) continue
-      ensure(r.キャスト名).push({
-        id: `r-${r.reservation_id}`,
-        kind: 'reservation',
-        startMs,
-        endMs,
-        leftPct: c.left,
-        widthPct: c.width,
-        customer: r.顧客名 || '（顧客名なし）',
-        room: r.ルーム || '',
-        resType: r.予約種別,
-      })
+      if (c) {
+        ensure(r.キャスト名).push({
+          id: `r-${r.reservation_id}`,
+          kind: 'reservation',
+          startMs,
+          endMs,
+          leftPct: c.left,
+          widthPct: c.width,
+          customer: r.顧客名 || '（顧客名なし）',
+          room: r.ルーム || '',
+          resType: r.予約種別,
+        })
+      }
+      // 予約終了後の10分インターバル（この後から対応可能）
+      const intEnd = endMs + INTERVAL_MIN * 60 * 1000
+      const ci = clampBar(endMs, intEnd)
+      if (ci) {
+        ensure(r.キャスト名).push({
+          id: `ri-${r.reservation_id}`,
+          kind: 'interval',
+          startMs: endMs,
+          endMs: intEnd,
+          leftPct: ci.left,
+          widthPct: ci.width,
+          customer: '',
+          room: '',
+        })
+      }
     }
 
     const list: Row[] = [...map.entries()].map(([cast, bars]) => ({
@@ -234,8 +250,10 @@ export default function GanttTimeline({
                       key={bar.id}
                       className="gantt-bar gantt-bar-interval"
                       style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
-                      title={`インターバル ${INTERVAL_MIN}分\n${fmtBizTime(bar.endMs)}〜 対応可能`}
-                    />
+                      title={`インターバル ${INTERVAL_MIN}分\n次対応可能：${fmtBizTime(bar.endMs)}〜`}
+                    >
+                      <span className="gantt-avail">次対応可能：{fmtBizTime(bar.endMs)}〜</span>
+                    </div>
                   ) : (
                     <div
                       key={bar.id}

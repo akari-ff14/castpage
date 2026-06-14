@@ -1,3 +1,8 @@
+.res-avail {
+  color: var(--teal);
+  font-weight: 600;
+}
+
 /* 対応可能になる時刻パネル */
 .avail-card {
   margin-bottom: 12px;

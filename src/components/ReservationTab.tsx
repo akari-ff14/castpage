@@ -363,6 +363,21 @@ export default function ReservationTab({
               <span className="muted">対応時間</span>
               <span>{durationLabel(r.予約時間 || 60)}</span>
             </div>
+            {(() => {
+              const startMs = new Date(r.予約日時).getTime()
+              if (isNaN(startMs)) return null
+              const endMs = startMs + (r.予約時間 || 60) * 60 * 1000
+              const availMs = endMs + 10 * 60 * 1000
+              return (
+                <div className="res-row">
+                  <span className="muted">時間</span>
+                  <span>
+                    {fmtBizTime(startMs)} 〜 {fmtBizTime(endMs)}
+                    <span className="res-avail">（次対応可能：{fmtBizTime(availMs)}〜）</span>
+                  </span>
+                </div>
+              )
+            })()}
             {r.ルーム && (
               <div className="res-row">
                 <span className="muted">ルーム</span>

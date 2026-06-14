@@ -173,8 +173,9 @@
 
 /* 対応終了後のインターバル（次の対応可能まで） */
 .gantt-bar-interval {
-  z-index: 1;
+  z-index: 4;
   border: none;
+  overflow: visible;
   background-image: repeating-linear-gradient(
     45deg,
     rgba(150, 150, 150, 0.28),
@@ -183,6 +184,20 @@
     transparent 8px
   );
   border-radius: 4px;
+}
+
+/* インターバル直後に出す「次対応可能：HH:MM〜」ラベル */
+.gantt-avail {
+  position: absolute;
+  left: calc(100% + 4px);
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--teal);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
 }
 
 .gantt-bar-time {
