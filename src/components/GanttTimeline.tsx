@@ -9,6 +9,7 @@ export interface GanttReservation {
   キャスト名: string
   顧客名: string
   予約種別: string
+  予約時間: number   // 対応時間（分）
   予約日時: string
   ルーム: string
 }
@@ -32,9 +33,10 @@ interface Row {
 
 const JST = 9 * 60 * 60 * 1000
 const OPEN_HOUR = 21               // 営業開始 21:00
-const WINDOW_HOURS = 7             // 営業日: 21:00 〜 翌 4:00（7時間）
+const WINDOW_HOURS = 5             // 表示枠: 21:00 〜 26:00（翌2:00）
 const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000
-const RESERVATION_DEFAULT_MIN = 60 // 予約の想定枠（終了時刻が無いため仮）
+const GRID_STEP_MIN = 30           // 目盛り（グリッド線）は30分刻み
+const RESERVATION_DEFAULT_MIN = 60 // 対応時間が無い場合の仮の枠
 
 // offsetDays 日ぶんずらした「営業日」の開始時刻（その日の 21:00 JST）を UTC で返す
 function businessDayStart(offsetDays: number): Date {
@@ -54,10 +56,16 @@ function dayLabel(start: Date): string {
   return `${jst.getUTCMonth() + 1}/${jst.getUTCDate()}（${wd}）`
 }
 
-// 1時間ごとの目盛り（開始からの相対時間 → クロック時刻ラベル）
-const TICKS = Array.from({ length: WINDOW_HOURS + 1 }, (_, i) => {
-  const clock = (OPEN_HOUR + i) % 24
-  return { pct: (i / WINDOW_HOURS) * 100, label: `${clock}` }
+// 1時間ごとのラベル（深夜は 24/25/26 の表記）
+const LABELS = Array.from({ length: WINDOW_HOURS + 1 }, (_, i) => ({
+  pct: (i / WINDOW_HOURS) * 100,
+  label: `${OPEN_HOUR + i}`,
+}))
+
+// 30分ごとのグリッド線（毎正時は強調）
+const GRIDS = Array.from({ length: (WINDOW_HOURS * 60) / GRID_STEP_MIN + 1 }, (_, i) => {
+  const relMin = i * GRID_STEP_MIN
+  return { pct: (relMin / (WINDOW_HOURS * 60)) * 100, major: relMin % 60 === 0 }
 })
 
 export default function GanttTimeline({
@@ -120,7 +128,7 @@ export default function GanttTimeline({
     for (const r of reservations) {
       const startMs = new Date(r.予約日時).getTime()
       if (isNaN(startMs)) continue
-      const endMs = startMs + RESERVATION_DEFAULT_MIN * 60 * 1000
+      const endMs = startMs + (Number(r.予約時間) || RESERVATION_DEFAULT_MIN) * 60 * 1000
       const c = clampBar(startMs, endMs)
       if (!c) continue
       ensure(r.キャスト名).push({
@@ -174,7 +182,7 @@ export default function GanttTimeline({
       <div className="gantt-axis">
         <div className="gantt-axis-label" />
         <div className="gantt-axis-track">
-          {TICKS.map((t) => (
+          {LABELS.map((t) => (
             <span key={t.pct} className="gantt-tick-label" style={{ left: `${t.pct}%` }}>
               {t.label}
             </span>
@@ -193,8 +201,12 @@ export default function GanttTimeline({
             >
               <div className="gantt-row-label" title={row.cast}>{row.cast}</div>
               <div className="gantt-row-track">
-                {TICKS.map((t) => (
-                  <span key={t.pct} className="gantt-gridline" style={{ left: `${t.pct}%` }} />
+                {GRIDS.map((g) => (
+                  <span
+                    key={g.pct}
+                    className={`gantt-gridline${g.major ? ' major' : ''}`}
+                    style={{ left: `${g.pct}%` }}
+                  />
                 ))}
                 {nowPct !== null && (
                   <span className="gantt-now" style={{ left: `${nowPct}%` }} />
@@ -204,13 +216,12 @@ export default function GanttTimeline({
                     key={bar.id}
                     className={`gantt-bar gantt-bar-${bar.kind}${bar.resType === '当日' ? ' is-sameday' : ''}`}
                     style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
-                    title={`${row.cast}｜${bar.customer}${bar.room ? `（${bar.room}）` : ''}\n${fmtTime(bar.startMs)}${
-                      bar.kind === 'session' ? `〜${fmtTime(bar.endMs)}` : '〜（予約）'
+                    title={`${row.cast}｜${bar.customer}${bar.room ? `（${bar.room}）` : ''}\n${fmtTime(bar.startMs)}〜${fmtTime(bar.endMs)}（${Math.round((bar.endMs - bar.startMs) / 60000)}分）${
+                      bar.kind === 'reservation' ? ' ※予約' : ''
                     }`}
                   >
                     <span className="gantt-bar-time">
-                      {fmtTime(bar.startMs)}
-                      {bar.kind === 'session' ? `〜${fmtTime(bar.endMs)}` : ''}
+                      {fmtTime(bar.startMs)}〜{fmtTime(bar.endMs)}
                     </span>
                     <span className="gantt-bar-cust">{bar.customer}</span>
                   </div>

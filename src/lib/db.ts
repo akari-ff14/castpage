@@ -63,6 +63,7 @@ export interface ReservationShape {
   顧客名: string
   予約種別: '当日' | '事前'
   予約金額: number
+  予約時間: number   // 対応時間（分）
   予約日時: string
   ルーム: string
   備考: string
@@ -280,7 +281,7 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 export async function getReservations(): Promise<ReservationShape[]> {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_type, reservation_price, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
@@ -289,6 +290,7 @@ export async function getReservations(): Promise<ReservationShape[]> {
     顧客名: r.customer_name,
     予約種別: r.reservation_type === 'sameday' ? '当日' : '事前',
     予約金額: Number(r.reservation_price),
+    予約時間: Number(r.duration_min) || 60,
     予約日時: r.reserved_at,
     ルーム: (r.room as { name?: string } | null)?.name || '',
     備考: r.note,
@@ -609,6 +611,7 @@ export async function addReservation(payload: {
   note?: string
   reservationType: '事前' | '当日'
   reservationPrice?: number
+  durationMin?: number
 }): Promise<ReservationShape> {
   const cId = await castIdByName(payload.castName)
   const rId = payload.room ? await roomIdByName(payload.room) : null
@@ -619,11 +622,12 @@ export async function addReservation(payload: {
       customer_name: payload.customerName || '',
       reservation_type: payload.reservationType === '当日' ? 'sameday' : 'advance',
       reservation_price: Number(payload.reservationPrice) || 0,
+      duration_min: Math.max(30, Number(payload.durationMin) || 60),
       reserved_at: new Date(payload.datetime).toISOString(),
       room_id: rId,
       note: payload.note || '',
     })
-    .select('id, customer_name, reservation_type, reservation_price, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .single()
   if (error) throw error
   return {
@@ -632,6 +636,7 @@ export async function addReservation(payload: {
     顧客名: data.customer_name,
     予約種別: data.reservation_type === 'sameday' ? '当日' : '事前',
     予約金額: Number(data.reservation_price),
+    予約時間: Number(data.duration_min) || 60,
     予約日時: data.reserved_at,
     ルーム: (data.room as { name?: string } | null)?.name || '',
     備考: data.note,
@@ -649,6 +654,7 @@ export async function updateReservation(payload: {
   note?: string
   reservationType?: '事前' | '当日'
   reservationPrice?: number
+  durationMin?: number
 }): Promise<void> {
   const updates: Record<string, unknown> = {}
   if (payload.castName !== undefined) updates.cast_id = await castIdByName(payload.castName)
@@ -660,6 +666,7 @@ export async function updateReservation(payload: {
     updates.reservation_type = payload.reservationType === '当日' ? 'sameday' : 'advance'
   }
   if (payload.reservationPrice !== undefined) updates.reservation_price = Number(payload.reservationPrice) || 0
+  if (payload.durationMin !== undefined) updates.duration_min = Math.max(30, Number(payload.durationMin) || 60)
   const { error } = await supabase.from('reservations').update(updates).eq('id', payload.reservationId)
   if (error) throw error
 }

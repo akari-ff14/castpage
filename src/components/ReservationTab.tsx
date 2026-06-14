@@ -15,6 +15,7 @@ interface Reservation {
   顧客名: string
   予約種別: '当日' | '事前' | string
   予約金額: number
+  予約時間: number
   予約日時: string
   ルーム: string
   備考: string
@@ -85,7 +86,7 @@ interface FormState {
   room: string
   reservationType: '当日' | '事前'
   pricingKey: string
-  pricingQty: number
+  durationMin: number  // 対応時間（分、30分刻み）
   note: string
 }
 
@@ -96,9 +97,20 @@ const emptyForm = (castName: string): FormState => ({
   room: '',
   reservationType: '事前',
   pricingKey: 'normal',
-  pricingQty: 0,
+  durationMin: 60,
   note: '',
 })
+
+// 対応時間の候補（30分刻み、30分〜5時間）
+const DURATION_OPTIONS: number[] = Array.from({ length: 10 }, (_, i) => (i + 1) * 30)
+
+function durationLabel(min: number): string {
+  const h = Math.floor(min / 60)
+  const m = min % 60
+  if (h && m) return `${h}時間${m}分`
+  if (h) return `${h}時間`
+  return `${m}分`
+}
 
 export default function ReservationTab({
   castName,
@@ -164,7 +176,11 @@ export default function ReservationTab({
   }
 
   function openEdit(r: Reservation) {
-    const pricing0 = pricing.find((p) => p.price === r.予約金額)
+    // 既存の予約金額・時間から料金種別を逆算（枠単価 = 金額 ÷ 枠数）
+    const durationMin = r.予約時間 || 60
+    const slots = Math.max(1, Math.round(durationMin / 30))
+    const unitPrice = r.予約金額 / slots
+    const pricing0 = pricing.find((p) => p.price === unitPrice)
     setForm({
       reservation_id: r.reservation_id,
       castName: r.キャスト名,
@@ -173,14 +189,15 @@ export default function ReservationTab({
       room: r.ルーム || '',
       reservationType: (r.予約種別 === '当日' ? '当日' : '事前'),
       pricingKey: pricing0?.key || 'normal',
-      pricingQty: pricing0 ? 1 : 0,
+      durationMin,
       note: r.備考 || '',
     })
     setFormOpen(true)
   }
 
   const pricingEntry = pricing.find((p) => p.key === form.pricingKey)
-  const calcPrice = pricingEntry ? pricingEntry.price * (form.pricingQty || 0) : 0
+  // 料金 = 種別の枠単価 × 枠数（30分=1枠）
+  const calcPrice = pricingEntry ? pricingEntry.price * (form.durationMin / 30) : 0
 
   // form.datetime ("YYYY-MM-DDTHH:mm") を 日付 / 時刻 に分解して扱う
   const [dateVal, timeVal] = (() => {
@@ -210,6 +227,7 @@ export default function ReservationTab({
       room: form.room,
       reservationType: form.reservationType,
       reservationPrice: calcPrice,
+      durationMin: form.durationMin,
       note: form.note.trim(),
     }
     const r = form.reservation_id
@@ -300,6 +318,10 @@ export default function ReservationTab({
             <div className="res-row">
               <span className="muted">顧客</span>
               <span>{r.顧客名 || '—'}</span>
+            </div>
+            <div className="res-row">
+              <span className="muted">対応時間</span>
+              <span>{durationLabel(r.予約時間 || 60)}</span>
             </div>
             {r.ルーム && (
               <div className="res-row">
@@ -435,18 +457,23 @@ export default function ReservationTab({
               </div>
             </div>
             <div className="form-group">
-              <label className="form-label">数量</label>
-              <input
-                type="number"
-                className="form-input"
-                min="0"
-                value={form.pricingQty}
-                onChange={(e) => setForm((f) => ({ ...f, pricingQty: Number(e.target.value) }))}
-              />
+              <label className="form-label">対応時間</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={form.durationMin}
+                  onChange={(e) => setForm((f) => ({ ...f, durationMin: Number(e.target.value) }))}
+                >
+                  {DURATION_OPTIONS.map((m) => (
+                    <option key={m} value={m}>{durationLabel(m)}</option>
+                  ))}
+                </select>
+              </div>
             </div>
           </div>
           <div className="res-price-preview">
             予約金額: <strong>{calcPrice > 0 ? fmtCurrency(calcPrice) : '—'}</strong>
+            <span className="muted"> ／ 対応時間 {durationLabel(form.durationMin)}</span>
           </div>
           <div className="form-group">
             <label className="form-label">備考</label>
