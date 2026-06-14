@@ -51,6 +51,17 @@
   font-weight: 600;
 }
 
+.badge-reserved {
+  background: rgba(232, 192, 96, 0.12);
+  color: var(--gold);
+  border: 1px solid rgba(232, 192, 96, 0.4);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  margin-left: 6px;
+}
+
 .customer-card-actions {
   display: flex;
   flex-direction: row;

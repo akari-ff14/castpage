@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { db } from '../lib/db'
 import { useSessionUpdates } from '../lib/useRealtimeSessions'
 import { fmtCurrency, fmtTime } from '../lib/format'
-import { Crown, RotateCw, Sparkles, Stop, Clock, ListChecks, TrendingUp, Play } from '../icons'
+import { Crown, RotateCw, Sparkles, Stop, Clock, ListChecks, TrendingUp, Play, Plus, Minus } from '../icons'
 import Modal from './Modal'
 import Tooltip from './Tooltip'
 import { useToast } from './Toast'
@@ -132,6 +132,24 @@ export default function ActiveSession({ castName, onChanged, onNavigate }: Props
     )
   }
 
+  async function onReduceExtend() {
+    if (!session || (session.延長回数 ?? 0) <= 0) return
+    await doAction(
+      'extend',
+      () => db.call<ActiveSessionData>('reduceExtend', session.session_id),
+      '延長を1回取り消しました',
+    )
+  }
+
+  async function onReduceOption() {
+    if (!session || (session.オプション回数 ?? 0) <= 0) return
+    await doAction(
+      'option',
+      () => db.call<ActiveSessionData>('reduceOption', session.session_id),
+      'オプションを1回取り消しました',
+    )
+  }
+
   async function onFinishConfirm() {
     if (!session) return
     setBusy(true)
@@ -200,23 +218,35 @@ export default function ActiveSession({ castName, onChanged, onNavigate }: Props
             }
           />
           <Field label="基本単価" value={fmtCurrency(session.基本単価)} className="c-gold" />
-          <Field label="延長回数" value={`${session.延長回数 ?? 0}回`} />
-          <Field label="オプション" value={`${session.オプション回数 ?? 0}回`} className="c-purple" />
+        </div>
+        <div className="session-steppers">
+          <Stepper
+            icon={<RotateCw size={15} />}
+            label="延長"
+            sub="+30分/回"
+            value={session.延長回数 ?? 0}
+            accent="teal"
+            onMinus={onReduceExtend}
+            onPlus={onExtend}
+            busy={busy}
+            minusTip="延長を1回取り消す（終了予定を30分戻す）"
+            plusTip="終了予定を30分のばす（料金加算）"
+          />
+          <Stepper
+            icon={<Sparkles size={15} />}
+            label="オプション"
+            sub="1回ごと加算"
+            value={session.オプション回数 ?? 0}
+            accent="purple"
+            onMinus={onReduceOption}
+            onPlus={onOption}
+            busy={busy}
+            minusTip="オプションを1回取り消す"
+            plusTip="オプションを1回追加する（料金加算）"
+          />
         </div>
       </div>
-      <div className="btn-action-grid">
-        <Tooltip content="終了予定を30分のばす（料金加算）">
-          <button className="btn-extend" onClick={onExtend} disabled={busy}>
-            <RotateCw size={16} />
-            <span>延長 +30分</span>
-          </button>
-        </Tooltip>
-        <Tooltip content="オプションを1回追加する（料金加算）">
-          <button className="btn-option" onClick={onOption} disabled={busy}>
-            <Sparkles size={16} />
-            <span>オプション</span>
-          </button>
-        </Tooltip>
+      <div className="btn-action-grid single">
         <Tooltip content="この接客を終了する">
           <button className="btn-finish" onClick={() => setFinishOpen(true)} disabled={busy}>
             <Stop size={16} />
@@ -333,6 +363,65 @@ function Field({
     <div>
       <div className="session-field-label">{label}</div>
       <div className={`session-field-value ${className || ''}`}>{value}</div>
+    </div>
+  )
+}
+
+function Stepper({
+  icon,
+  label,
+  sub,
+  value,
+  accent,
+  onMinus,
+  onPlus,
+  busy,
+  minusTip,
+  plusTip,
+}: {
+  icon: React.ReactNode
+  label: string
+  sub: string
+  value: number
+  accent: 'teal' | 'purple'
+  onMinus: () => void
+  onPlus: () => void
+  busy: boolean
+  minusTip: string
+  plusTip: string
+}) {
+  return (
+    <div className={`stepper-row stepper-${accent}`}>
+      <div className="stepper-info">
+        <div className="stepper-label">
+          {icon}
+          <span>{label}</span>
+        </div>
+        <div className="stepper-sub">{sub}</div>
+      </div>
+      <div className="stepper-control">
+        <Tooltip content={minusTip}>
+          <button
+            className="stepper-btn"
+            onClick={onMinus}
+            disabled={busy || value <= 0}
+            aria-label={`${label}を減らす`}
+          >
+            <Minus size={16} />
+          </button>
+        </Tooltip>
+        <span className="stepper-value">{value}回</span>
+        <Tooltip content={plusTip}>
+          <button
+            className="stepper-btn"
+            onClick={onPlus}
+            disabled={busy}
+            aria-label={`${label}を増やす`}
+          >
+            <Plus size={16} />
+          </button>
+        </Tooltip>
+      </div>
     </div>
   )
 }

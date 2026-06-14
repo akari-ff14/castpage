@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency, fmtDateTime } from '../lib/format'
-import { useRealtimeReservations } from '../lib/useRealtimeSessions'
+import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
 import { Play } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
+import GanttTimeline from './GanttTimeline'
 import type { SessionPreset } from './StartSessionForm'
 import './ReservationTab.css'
 
@@ -121,6 +122,9 @@ export default function ReservationTab({
   const [busy, setBusy] = useState(false)
   const [deleting, setDeleting] = useState<Reservation | null>(null)
   const toast = useToast()
+
+  // 各キャストの稼働状況（誰が何時から何時まで対応か）をリアルタイム取得
+  const { sessions: activeSessions } = useActiveSessions()
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -267,6 +271,12 @@ export default function ReservationTab({
           </button>
         </div>
       </div>
+
+      <GanttTimeline
+        sessions={activeSessions}
+        reservations={list}
+        highlightCast={castName}
+      />
 
       <button className="btn-add-top" onClick={openAdd}>＋ 予約を追加</button>
 

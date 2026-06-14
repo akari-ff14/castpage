@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import {
   forceEndSession,
   updateHistorySession,
   deleteSession,
+  getCastsAndRooms,
   type SessionShape,
 } from '../../lib/db'
 import { useActiveSessions } from '../../lib/useRealtimeSessions'
@@ -15,6 +16,7 @@ import './AdminCommon.css'
 interface EditState {
   session_id: string
   顧客名: string
+  ルーム: string
   延長回数: number
   オプション回数: number
   備考: string
@@ -26,8 +28,21 @@ export default function SessionAdmin() {
   const [editing, setEditing] = useState<EditState | null>(null)
   const [deleting, setDeleting] = useState<SessionShape | null>(null)
   const [forcing, setForcing] = useState<SessionShape | null>(null)
+  const [rooms, setRooms] = useState<string[]>([])
   const [busy, setBusy] = useState(false)
   const toast = useToast()
+
+  // ルーム編集用の選択肢を一度だけ取得
+  useEffect(() => {
+    (async () => {
+      try {
+        const cr = await getCastsAndRooms()
+        setRooms(cr.rooms)
+      } catch {
+        // 編集モーダルを開いた時にルーム候補が空になるだけ
+      }
+    })()
+  }, [])
 
   async function doForceEnd() {
     if (!forcing) return
@@ -49,6 +64,7 @@ export default function SessionAdmin() {
     setBusy(true)
     try {
       await updateHistorySession(editing.session_id, {
+        room_name: editing.ルーム || null,
         extend_count: editing.延長回数,
         option_count: editing.オプション回数,
         note: editing.備考,
@@ -125,6 +141,7 @@ export default function SessionAdmin() {
                 setEditing({
                   session_id: s.session_id,
                   顧客名: s.顧客名,
+                  ルーム: s.ルーム || '',
                   延長回数: s.延長回数,
                   オプション回数: s.オプション回数,
                   備考: s.備考,
@@ -164,14 +181,29 @@ export default function SessionAdmin() {
         <Modal onClose={() => !busy && setEditing(null)}>
           <h3>接客を編集</h3>
           <p className="muted small">延長回数・オプション回数を変更すると、収益金が自動再計算されます。</p>
-          <div className="form-group">
-            <label className="form-label">顧客名</label>
-            <input
-              type="text"
-              className="form-input"
-              value={editing.顧客名}
-              onChange={(e) => setEditing((p) => (p ? { ...p, 顧客名: e.target.value } : null))}
-            />
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">顧客名</label>
+              <input
+                type="text"
+                className="form-input"
+                value={editing.顧客名}
+                onChange={(e) => setEditing((p) => (p ? { ...p, 顧客名: e.target.value } : null))}
+              />
+            </div>
+            <div className="form-group">
+              <label className="form-label">ルーム</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={editing.ルーム}
+                  onChange={(e) => setEditing((p) => (p ? { ...p, ルーム: e.target.value } : null))}
+                >
+                  <option value="">—</option>
+                  {rooms.map((r) => <option key={r} value={r}>{r}</option>)}
+                </select>
+              </div>
+            </div>
           </div>
           <div className="form-row">
             <div className="form-group">

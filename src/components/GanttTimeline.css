@@ -1,0 +1,220 @@
+/* ガント風タイムライン */
+
+.gantt-card {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  overflow: hidden;
+}
+
+/* 行ラベル列の幅（軸・各行で共有） */
+.gantt-card {
+  --gantt-label-w: 64px;
+}
+
+.gantt-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.gantt-nav {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  border: 1px solid var(--border2);
+  background: var(--bg2);
+  color: var(--text);
+  cursor: pointer;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.gantt-nav:active { transform: scale(0.92); }
+
+.gantt-day {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.gantt-day .muted { font-weight: 400; font-size: 12px; }
+
+.gantt-today {
+  border: 1px solid var(--teal-border);
+  background: var(--teal-bg);
+  color: var(--teal);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* 時刻軸 */
+.gantt-axis {
+  display: flex;
+  align-items: flex-end;
+  height: 18px;
+  margin-bottom: 4px;
+}
+.gantt-axis-label {
+  width: var(--gantt-label-w);
+  flex-shrink: 0;
+}
+.gantt-axis-track {
+  position: relative;
+  flex: 1;
+  height: 100%;
+}
+.gantt-tick-label {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.gantt-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.gantt-row {
+  display: flex;
+  align-items: stretch;
+  min-height: 34px;
+}
+.gantt-row.is-me .gantt-row-label {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.gantt-row-label {
+  width: var(--gantt-label-w);
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  padding-right: 8px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gantt-row-track {
+  position: relative;
+  flex: 1;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.gantt-row.is-me .gantt-row-track {
+  border-color: var(--teal-border);
+}
+
+.gantt-gridline {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--border);
+  opacity: 0.6;
+}
+
+.gantt-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--red, #e2536a);
+  box-shadow: 0 0 6px var(--red, #e2536a);
+  z-index: 3;
+}
+
+.gantt-bar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  border-radius: 6px;
+  padding: 0 6px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  z-index: 2;
+  cursor: default;
+}
+
+.gantt-bar-session {
+  background: var(--teal-bg);
+  border: 1.5px solid var(--teal-border);
+  color: var(--teal);
+}
+
+.gantt-bar-reservation {
+  background: rgba(232, 192, 96, 0.14);
+  border: 1.5px dashed var(--gold);
+  color: var(--gold);
+}
+.gantt-bar-reservation.is-sameday {
+  border-style: solid;
+}
+
+.gantt-bar-time {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.gantt-bar-cust {
+  font-size: 11px;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--text);
+}
+
+.gantt-empty {
+  margin: 8px 0 4px;
+}
+
+.gantt-legend {
+  display: flex;
+  gap: 14px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+.gantt-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+.swatch {
+  width: 14px;
+  height: 10px;
+  border-radius: 3px;
+  display: inline-block;
+}
+.swatch-session { background: var(--teal-bg); border: 1.5px solid var(--teal-border); }
+.swatch-reservation { background: rgba(232, 192, 96, 0.14); border: 1.5px dashed var(--gold); }
+.swatch-now { width: 3px; background: var(--red, #e2536a); border-radius: 2px; }
+
+/* スマホ: ラベル列をやや狭く */
+@media (max-width: 768px) {
+  .gantt-card { --gantt-label-w: 52px; }
+  .gantt-bar-time { font-size: 9px; }
+  .gantt-bar-cust { font-size: 10px; }
+}

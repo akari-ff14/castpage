@@ -507,6 +507,60 @@ export async function addOption(sessionId: string): Promise<SessionShape> {
   return sessionRowToShape(data as unknown as SessionRow, pricing)
 }
 
+// 延長を1回取り消す（終了予定を30分前倒し、収益再計算）。延長回数0なら何もしない
+export async function reduceExtend(sessionId: string): Promise<SessionShape> {
+  const pricing = await loadPricing()
+  const { data: cur, error: e1 } = await supabase
+    .from('sessions')
+    .select('id, base_price, option_price, customer_count, extend_count, option_count, ended_at, finished, customer_names, cast_id, cast:casts(name)')
+    .eq('id', sessionId)
+    .single()
+  if (e1) throw e1
+  if (cur.finished) throw new Error('既に完了済みです')
+  if (Number(cur.extend_count) <= 0) throw new Error('延長回数は0です')
+
+  const newExtend = Number(cur.extend_count) - 1
+  const newEnd = new Date(new Date(cur.ended_at).getTime() - 30 * 60 * 1000).toISOString()
+  // 収益再計算: base × 顧客数 × (1+延長回数) + opt × オプション回数
+  const revenue =
+    Number(cur.base_price) * Number(cur.customer_count) * (1 + newExtend) +
+    Number(cur.option_price) * Number(cur.option_count)
+  const { data, error } = await supabase
+    .from('sessions')
+    .update({ extend_count: newExtend, ended_at: newEnd, revenue })
+    .eq('id', sessionId)
+    .select(SESSION_SELECT)
+    .single()
+  if (error) throw error
+  return sessionRowToShape(data as unknown as SessionRow, pricing)
+}
+
+// オプションを1回取り消す（収益再計算）。オプション回数0なら何もしない
+export async function reduceOption(sessionId: string): Promise<SessionShape> {
+  const pricing = await loadPricing()
+  const { data: cur, error: e1 } = await supabase
+    .from('sessions')
+    .select('id, base_price, option_price, customer_count, extend_count, option_count, finished')
+    .eq('id', sessionId)
+    .single()
+  if (e1) throw e1
+  if (cur.finished) throw new Error('既に完了済みです')
+  if (Number(cur.option_count) <= 0) throw new Error('オプション回数は0です')
+
+  const newOpt = Number(cur.option_count) - 1
+  const revenue =
+    Number(cur.base_price) * Number(cur.customer_count) * (1 + Number(cur.extend_count)) +
+    Number(cur.option_price) * newOpt
+  const { data, error } = await supabase
+    .from('sessions')
+    .update({ option_count: newOpt, revenue })
+    .eq('id', sessionId)
+    .select(SESSION_SELECT)
+    .single()
+  if (error) throw error
+  return sessionRowToShape(data as unknown as SessionRow, pricing)
+}
+
 export async function finishSession(payload: {
   sessionId: string
   note?: string
@@ -1387,6 +1441,8 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   startSession,
   extendSession,
   addOption,
+  reduceExtend,
+  reduceOption,
   finishSession,
   addReservation,
   updateReservation,

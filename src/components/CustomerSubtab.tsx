@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { db } from '../lib/db'
-import { fmtDate } from '../lib/format'
-import { AlertTriangle, Sparkles, Edit, Trash } from '../icons'
+import { fmtDate, fmtDateTime } from '../lib/format'
+import { AlertTriangle, Sparkles, Edit, Trash, Calendar } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './CustomerSubtab.css'
@@ -14,10 +14,19 @@ interface CustomerRecord {
   作成日時: string
 }
 
+interface ReservationLite {
+  顧客名: string
+  キャスト名: string
+  予約日時: string
+}
+
 interface CustomerGroup {
   name: string
-  records: CustomerRecord[]
+  records: CustomerRecord[]      // 実際の来店記録（来店回数のカウント対象）
+  reservations: ReservationLite[] // 予約（来店回数には含めない）
   lastVisit: Date | null
+  nextReservation: Date | null   // 最も近い未来の予約（無ければ最新の予約）
+  hasFutureReservation: boolean
   casts: string[]
 }
 
@@ -25,6 +34,7 @@ type SortKey = 'last_visit' | 'visits_desc' | 'visits_asc'
 
 export default function CustomerSubtab() {
   const [all, setAll] = useState<CustomerRecord[]>([])
+  const [reservations, setReservations] = useState<ReservationLite[]>([])
   const [notes, setNotes] = useState<Map<string, string>>(new Map())
   const [casts, setCasts] = useState<string[]>([])
   const [loading, setLoading] = useState(false)
@@ -44,14 +54,17 @@ export default function CustomerSubtab() {
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const [rCust, rNotes] = await Promise.all([
+    const [rCust, rNotes, rRes] = await Promise.all([
       db.call<CustomerRecord[]>('getCustomers'),
       db.call<Map<string, string>>('getAllCustomerNotes'),
+      db.call<ReservationLite[]>('getReservations'),
     ])
     setLoading(false)
     if (rCust.ok) setAll(rCust.data || [])
     else setErr(rCust.error)
     if (rNotes.ok && rNotes.data instanceof Map) setNotes(rNotes.data)
+    // 予約客も顧客リストに表示する（来店回数にはカウントしない）
+    if (rRes.ok) setReservations(rRes.data || [])
   }, [])
 
   useEffect(() => { load() }, [load])
@@ -65,18 +78,26 @@ export default function CustomerSubtab() {
 
   const groups = useMemo<CustomerGroup[]>(() => {
     const lowerSearch = search.toLowerCase()
+    const now = Date.now()
+    const map = new Map<string, CustomerGroup>()
+    const ensure = (rawName: string): CustomerGroup => {
+      const name = rawName || '—'
+      let g = map.get(name)
+      if (!g) {
+        g = { name, records: [], reservations: [], lastVisit: null, nextReservation: null, hasFutureReservation: false, casts: [] }
+        map.set(name, g)
+      }
+      return g
+    }
+
+    // 来店記録
     const filtered = all.filter((c) => {
       if (castFilter && c.対応キャスト !== castFilter) return false
       if (lowerSearch && !String(c.顧客名 || '').toLowerCase().includes(lowerSearch)) return false
       return true
     })
-    const map = new Map<string, CustomerGroup>()
     for (const c of filtered) {
-      const name = c.顧客名 || '—'
-      if (!map.has(name)) {
-        map.set(name, { name, records: [], lastVisit: null, casts: [] })
-      }
-      const g = map.get(name)!
+      const g = ensure(c.顧客名)
       g.records.push(c)
       if (c.対応日) {
         const d = new Date(c.対応日)
@@ -84,12 +105,39 @@ export default function CustomerSubtab() {
       }
       if (c.対応キャスト && !g.casts.includes(c.対応キャスト)) g.casts.push(c.対応キャスト)
     }
+
+    // 予約（来店回数には含めず、別枠で表示）
+    const filteredRes = reservations.filter((r) => {
+      if (!String(r.顧客名 || '').trim()) return false
+      if (castFilter && r.キャスト名 !== castFilter) return false
+      if (lowerSearch && !String(r.顧客名 || '').toLowerCase().includes(lowerSearch)) return false
+      return true
+    })
+    for (const r of filteredRes) {
+      const g = ensure(r.顧客名)
+      g.reservations.push(r)
+      const d = new Date(r.予約日時)
+      if (!isNaN(d.getTime())) {
+        const future = d.getTime() >= now
+        // 表示優先度: 直近の未来予約 > （未来が無ければ）最新の予約
+        if (future) {
+          if (!g.hasFutureReservation || !g.nextReservation || d < g.nextReservation) {
+            g.nextReservation = d
+          }
+          g.hasFutureReservation = true
+        } else if (!g.hasFutureReservation) {
+          if (!g.nextReservation || d > g.nextReservation) g.nextReservation = d
+        }
+      }
+    }
+
+    const recency = (g: CustomerGroup) => g.lastVisit?.getTime() || g.nextReservation?.getTime() || 0
     const list = [...map.values()]
     if (sort === 'visits_desc') list.sort((a, b) => b.records.length - a.records.length)
     else if (sort === 'visits_asc') list.sort((a, b) => a.records.length - b.records.length)
-    else list.sort((a, b) => (b.lastVisit?.getTime() || 0) - (a.lastVisit?.getTime() || 0))
+    else list.sort((a, b) => recency(b) - recency(a))
     return list
-  }, [all, castFilter, search, sort])
+  }, [all, reservations, castFilter, search, sort])
 
   function openMemo(name: string) {
     setMemoTarget(name)
@@ -198,14 +246,22 @@ export default function CustomerSubtab() {
             <div className="customer-info">
               <div className="customer-name">
                 {g.name}
-                {g.records.length === 1 ? (
+                {g.records.length === 0 ? (
+                  <span className="badge-reserved"><Calendar size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />予約のみ</span>
+                ) : g.records.length === 1 ? (
                   <span className="badge-new"><Sparkles size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />新規</span>
                 ) : (
                   <span className="visit-count">{g.records.length}回来店</span>
                 )}
+                {g.records.length > 0 && g.hasFutureReservation && (
+                  <span className="badge-reserved"><Calendar size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />予約あり</span>
+                )}
               </div>
               <div className="customer-meta">
                 最終来店: {g.lastVisit ? fmtDate(g.lastVisit) : '—'} ｜ 担当: {g.casts.join('、') || '—'}
+                {g.nextReservation && (
+                  <> ｜ {g.hasFutureReservation ? '次回予約' : '予約'}: {fmtDateTime(g.nextReservation)}</>
+                )}
               </div>
               {memo && <div className="customer-note-preview">{memo}</div>}
             </div>

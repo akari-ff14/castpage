@@ -115,12 +115,103 @@
 .session-field-value.c-gold { color: var(--gold); }
 .session-field-value.c-purple { color: var(--purple); }
 
+/* 延長 / オプションの ± ステッパー */
+.session-steppers {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.stepper-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
+.stepper-info {
+  min-width: 0;
+}
+
+.stepper-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.stepper-teal .stepper-label { color: var(--teal); }
+.stepper-purple .stepper-label { color: var(--purple); }
+
+.stepper-sub {
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+.stepper-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.stepper-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border2);
+  background: var(--bg2);
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.1s, opacity 0.15s, border-color 0.15s;
+}
+
+.stepper-teal .stepper-btn { border-color: var(--teal-border); color: var(--teal); }
+.stepper-purple .stepper-btn { border-color: var(--purple-border); color: var(--purple); }
+
+.stepper-btn:active:not(:disabled) {
+  transform: scale(0.92);
+}
+
+.stepper-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.stepper-value {
+  min-width: 38px;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.session-steppers + .btn-action-grid {
+  margin-top: 10px;
+}
+
 /* 3つのアクションボタン */
 .btn-action-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 8px;
   margin-top: 10px;
+}
+
+.btn-action-grid.single {
+  grid-template-columns: 1fr;
 }
 
 .btn-extend,
