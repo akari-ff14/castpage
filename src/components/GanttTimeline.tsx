@@ -31,11 +31,12 @@ interface Row {
 }
 
 const JST = 9 * 60 * 60 * 1000
-const WINDOW_HOURS = 14            // 営業日: 14:00 〜 翌 4:00（14時間）
+const OPEN_HOUR = 21               // 営業開始 21:00
+const WINDOW_HOURS = 7             // 営業日: 21:00 〜 翌 4:00（7時間）
 const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000
 const RESERVATION_DEFAULT_MIN = 60 // 予約の想定枠（終了時刻が無いため仮）
 
-// offsetDays 日ぶんずらした「営業日」の開始時刻（その日の 14:00 JST）を UTC で返す
+// offsetDays 日ぶんずらした「営業日」の開始時刻（その日の 21:00 JST）を UTC で返す
 function businessDayStart(offsetDays: number): Date {
   const jst = new Date(Date.now() + JST)
   const y = jst.getUTCFullYear()
@@ -44,7 +45,7 @@ function businessDayStart(offsetDays: number): Date {
   const h = jst.getUTCHours()
   // 4:00 より前なら営業日は前日扱い
   const dayDate = d + (h < 4 ? -1 : 0) + offsetDays
-  return new Date(Date.UTC(y, m, dayDate, 14) - JST)
+  return new Date(Date.UTC(y, m, dayDate, OPEN_HOUR) - JST)
 }
 
 function dayLabel(start: Date): string {
@@ -53,11 +54,10 @@ function dayLabel(start: Date): string {
   return `${jst.getUTCMonth() + 1}/${jst.getUTCDate()}（${wd}）`
 }
 
-// 2時間ごとの目盛り（開始からの相対時間 → クロック時刻ラベル）
-const TICKS = Array.from({ length: WINDOW_HOURS / 2 + 1 }, (_, i) => {
-  const relH = i * 2
-  const clock = (14 + relH) % 24
-  return { pct: (relH / WINDOW_HOURS) * 100, label: `${clock}` }
+// 1時間ごとの目盛り（開始からの相対時間 → クロック時刻ラベル）
+const TICKS = Array.from({ length: WINDOW_HOURS + 1 }, (_, i) => {
+  const clock = (OPEN_HOUR + i) % 24
+  return { pct: (i / WINDOW_HOURS) * 100, label: `${clock}` }
 })
 
 export default function GanttTimeline({
