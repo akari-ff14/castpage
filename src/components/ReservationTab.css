@@ -154,3 +154,31 @@
   color: var(--gold);
   margin-left: 6px;
 }
+
+/* 接客開始済みバッジ */
+.badge-converted {
+  background: var(--teal-bg);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+}
+
+/* 現在時刻を入力ボタン */
+.btn-now {
+  display: inline-flex;
+  align-items: center;
+  background: var(--teal-bg);
+  color: var(--teal);
+  border: 1px solid var(--teal-border);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  margin: -4px 0 12px;
+  transition: background 0.15s, color 0.15s;
+}
+
+.btn-now:hover {
+  background: var(--teal);
+  color: var(--bg);
+}

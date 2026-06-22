@@ -30,6 +30,7 @@ export interface SessionShape {
   作成日時: string
   更新日時: string
   完了: boolean
+  キャンセル: boolean
 }
 
 export interface PricingEntry {
@@ -69,6 +70,7 @@ export interface ReservationShape {
   備考: string
   作成日時: string
   更新日時: string
+  converted: boolean   // 接客開始済み（タイムラインから非表示にする）
 }
 
 export interface FinishBreakdown {
@@ -124,6 +126,7 @@ interface SessionRow {
   finished: boolean
   note: string
   revenue: number
+  cancelled: boolean
   created_at: string
   updated_at: string
   cast?: { name: string } | null
@@ -215,10 +218,11 @@ function sessionRowToShape(row: SessionRow, pricing: Map<string, PricingEntry>):
     作成日時: row.created_at,
     更新日時: row.updated_at,
     完了: row.finished,
+    キャンセル: !!row.cancelled,
   }
 }
 
-const SESSION_SELECT = 'id, cast_id, room_id, service_type, customer_names, customer_count, base_price, option_price, extend_count, option_count, started_at, ended_at, finished, note, revenue, created_at, updated_at, cast:casts(name), room:rooms(name)'
+const SESSION_SELECT = 'id, cast_id, room_id, service_type, customer_names, customer_count, base_price, option_price, extend_count, option_count, started_at, ended_at, finished, note, revenue, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)'
 
 // ============================================================
 // API: マスタ / 一覧
@@ -281,7 +285,7 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 export async function getReservations(): Promise<ReservationShape[]> {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, converted_at, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
@@ -296,6 +300,7 @@ export async function getReservations(): Promise<ReservationShape[]> {
     備考: r.note,
     作成日時: r.created_at,
     更新日時: r.updated_at,
+    converted: !!r.converted_at,
   }))
 }
 
@@ -403,6 +408,7 @@ export async function startSession(payload: {
   note?: string
   serviceType: string
   presetSlots?: number
+  reservationId?: string   // 予約から開始した場合、その予約をタイムラインから消す
 }): Promise<SessionShape> {
   const slots = Math.max(1, Number(payload.presetSlots) || 1)
   const cId = await castIdByName(payload.castName)
@@ -453,6 +459,19 @@ export async function startSession(payload: {
     )
   }
   await logActivity('start', payload.castName, inserted.id, joined || null, cId)
+
+  // 予約から開始した場合、その予約を「接客開始済み」にマーク（一覧には残すがタイムラインからは消す）
+  if (payload.reservationId) {
+    try {
+      await supabase
+        .from('reservations')
+        .update({ converted_at: now.toISOString() })
+        .eq('id', payload.reservationId)
+    } catch (e) {
+      console.warn('reservation convert mark failed:', e)
+    }
+  }
+
   return sessionRowToShape(inserted as unknown as SessionRow, pricing)
 }
 
@@ -642,6 +661,7 @@ export async function addReservation(payload: {
     備考: data.note,
     作成日時: data.created_at,
     更新日時: data.updated_at,
+    converted: false,
   }
 }
 
@@ -1299,6 +1319,98 @@ export async function forceEndSession(sessionId: string): Promise<void> {
   if (error) throw error
 }
 
+// 履歴の手動追加（過去分の記録 / キャンセル記録）
+//
+// - cancelled=true: キャンセル記録。金額・収益は常に0、件数のみ残す（service_type は
+//   FK 制約のためダミーで 'normal' を入れるが、表示・集計は cancelled フラグで判定）
+// - cancelled=false: 通常の接客履歴。revenue は startSession / updateHistorySession と同一式で算出
+export async function addHistorySession(payload: {
+  castName: string
+  room?: string
+  serviceType: string
+  customerNames: string[]
+  startedAt: string        // ISO (UTC)
+  extendCount?: number
+  optionCount?: number
+  note?: string
+  cancelled?: boolean
+}): Promise<SessionShape> {
+  const pricing = await loadPricing()
+  const cId = await castIdByName(payload.castName)
+  const rId = payload.room ? await roomIdByName(payload.room) : null
+  const names = payload.customerNames.map((s) => String(s || '').trim()).filter(Boolean)
+  const numCust = Math.max(1, names.length)
+  const joined = names.join(', ')
+  const startedAt = new Date(payload.startedAt)
+  if (isNaN(startedAt.getTime())) throw new Error('開始日時が不正です')
+
+  let insertRow: Record<string, unknown>
+  if (payload.cancelled) {
+    insertRow = {
+      cast_id: cId,
+      room_id: rId,
+      service_type: 'normal',   // FK 用ダミー（表示は cancelled で上書き）
+      customer_names: joined,
+      customer_count: numCust,
+      base_price: 0,
+      option_price: 0,
+      extend_count: 0,
+      option_count: 0,
+      started_at: startedAt.toISOString(),
+      ended_at: startedAt.toISOString(),
+      finished: true,
+      note: payload.note || '',
+      revenue: 0,
+      cancelled: true,
+    }
+  } else {
+    const svc = pricing.get(payload.serviceType)
+    const opt = pricing.get('option')
+    if (!svc) throw new Error('接客種別の料金設定が見つかりません')
+    if (!opt) throw new Error('オプション料金設定が見つかりません')
+    const ext = Math.max(0, Number(payload.extendCount) || 0)
+    const optCnt = Math.max(0, Number(payload.optionCount) || 0)
+    const ended = new Date(startedAt.getTime() + 30 * 60 * 1000 * (1 + ext))
+    insertRow = {
+      cast_id: cId,
+      room_id: rId,
+      service_type: payload.serviceType,
+      customer_names: joined,
+      customer_count: numCust,
+      base_price: svc.price,
+      option_price: opt.price,
+      extend_count: ext,
+      option_count: optCnt,
+      started_at: startedAt.toISOString(),
+      ended_at: ended.toISOString(),
+      finished: true,
+      note: payload.note || '',
+      revenue: svc.price * numCust * (1 + ext) + opt.price * optCnt,
+      cancelled: false,
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('sessions')
+    .insert(insertRow)
+    .select(SESSION_SELECT)
+    .single()
+  if (error) throw error
+
+  // 顧客来店記録（キャンセルでも来店事実として残す）
+  if (names.length) {
+    await supabase.from('customer_visits').insert(
+      names.map((nm) => ({
+        session_id: data.id,
+        cast_id: cId,
+        customer_name: nm,
+        visited_at: startedAt.toISOString(),
+      })),
+    )
+  }
+  return sessionRowToShape(data as unknown as SessionRow, pricing)
+}
+
 // 完了セッションの編集 — 全項目対応で収益自動再計算
 //
 // 注意:
@@ -1322,7 +1434,7 @@ export async function updateHistorySession(
   // 現在の値を取得
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('cast_id, room_id, service_type, base_price, option_price, customer_count, customer_names, extend_count, option_count')
+    .select('cast_id, room_id, service_type, base_price, option_price, customer_count, customer_names, extend_count, option_count, cancelled')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -1368,7 +1480,10 @@ export async function updateHistorySession(
   if (fields.note !== undefined) updates.note = fields.note
 
   // 収益再計算: base × 顧客数 × (1+延長回数) + opt × オプション回数
-  updates.revenue = newBasePrice * newCustCount * (1 + newExt) + newOptPrice * newOptCnt
+  // ただしキャンセル履歴は常に0円（件数のみの記録）
+  updates.revenue = cur.cancelled
+    ? 0
+    : newBasePrice * newCustCount * (1 + newExt) + newOptPrice * newOptCnt
 
   const { data, error } = await supabase
     .from('sessions')
@@ -1454,6 +1569,7 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   addReservation,
   updateReservation,
   deleteReservation,
+  addHistorySession,
   addToBlacklist,
   removeFromBlacklist,
   saveUserSettings,

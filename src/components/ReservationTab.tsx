@@ -21,6 +21,7 @@ interface Reservation {
   備考: string
   作成日時: string
   更新日時: string
+  converted: boolean   // 接客開始済み
 }
 
 interface PricingEntry {
@@ -65,6 +66,16 @@ const TIME_OPTIONS: string[] = (() => {
   }
   return out
 })()
+
+// 現在時刻（JST）を datetime-local 形式 "YYYY-MM-DDTHH:mm" で返す（5分単位に丸め）
+function nowJstInput(): string {
+  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  // 5分単位に丸め（四捨五入）
+  const mins = jst.getUTCMinutes()
+  const rounded = Math.round(mins / 5) * 5
+  jst.setUTCMinutes(rounded, 0, 0)
+  return jst.toISOString().slice(0, 16)
+}
 
 // datetime-local input value (JST) → UTC ISO
 function fromLocalInput(local: string): string {
@@ -348,6 +359,7 @@ export default function ReservationTab({
             <span className={`badge ${r.予約種別 === '当日' ? 'badge-normal' : 'badge-vip'}`}>
               {r.予約種別}
             </span>
+            {r.converted && <span className="badge badge-converted">接客開始済み</span>}
             <span className="res-datetime">{fmtDateTime(r.予約日時)}</span>
           </div>
           <div className="res-body">
@@ -398,10 +410,10 @@ export default function ReservationTab({
             )}
           </div>
           <div className="res-actions">
-            {onStartSession && (
+            {onStartSession && !r.converted && (
               <button
                 className="btn-res-start"
-                onClick={() => onStartSession({ customerName: r.顧客名, room: r.ルーム })}
+                onClick={() => onStartSession({ customerName: r.顧客名, room: r.ルーム, reservationId: r.reservation_id })}
               >
                 <Play size={12} />
                 接客開始
@@ -494,6 +506,17 @@ export default function ReservationTab({
               </div>
             </div>
           </div>
+          <button
+            type="button"
+            className="btn-now"
+            onClick={() => {
+              const [d = '', t = ''] = nowJstInput().split('T')
+              setDateTime(d, t)
+            }}
+          >
+            <Clock size={13} style={{ verticalAlign: '-2px', marginRight: 5 }} />
+            現在時刻を入力
+          </button>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">料金種別</label>

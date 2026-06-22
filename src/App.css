@@ -414,6 +414,12 @@ button {
   border: 1px solid var(--purple-border);
 }
 
+.badge-cancel {
+  background: var(--red-bg);
+  color: var(--red);
+  border: 1px solid var(--red-border);
+}
+
 /* ── モーダル ── */
 .modal-overlay {
   position: fixed;

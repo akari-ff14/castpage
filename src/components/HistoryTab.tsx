@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db, deleteSession, getCastsAndRooms, getPricing, updateHistorySession } from '../lib/db'
 import { fmtCurrency, fmtDateTime, fmtTime } from '../lib/format'
-import { Crown, AlertTriangle } from '../icons'
+import { Crown, AlertTriangle, Clock } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './HistoryTab.css'
@@ -21,6 +21,7 @@ interface HistorySession {
   作成日時: string
   収益金: number
   備考: string
+  キャンセル: boolean
 }
 
 interface EditState {
@@ -29,6 +30,19 @@ interface EditState {
   room_name: string
   service_type: string
   customer_names: string
+  extend_count: number
+  option_count: number
+  note: string
+  cancelled: boolean
+}
+
+interface AddState {
+  kind: 'normal' | 'cancel'
+  cast_name: string
+  room_name: string
+  service_type: string
+  customer_names: string
+  datetime: string   // "YYYY-MM-DDTHH:mm"（JST）
   extend_count: number
   option_count: number
   note: string
@@ -46,6 +60,21 @@ function nowJstYearMonth(): { year: number; month: number } {
     year: jst.getUTCFullYear(),
     month: jst.getUTCMonth() + 1,
   }
+}
+
+// 現在時刻（JST）を datetime-local 形式 "YYYY-MM-DDTHH:mm" で返す
+function nowJstInput(): string {
+  return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16)
+}
+
+// datetime-local input value (JST の壁時計時刻) → UTC ISO
+function fromLocalInput(local: string): string {
+  if (!local) return ''
+  const [datePart, timePart] = local.split('T')
+  const [y, m, d] = datePart.split('-').map(Number)
+  const [hh, mm] = timePart.split(':').map(Number)
+  const utc = new Date(Date.UTC(y, m - 1, d, hh, mm) - 9 * 60 * 60 * 1000)
+  return utc.toISOString()
 }
 
 export default function HistoryTab({
@@ -69,6 +98,7 @@ export default function HistoryTab({
   const [pricing, setPricing] = useState<PricingEntry[]>([])
 
   const [editing, setEditing] = useState<EditState | null>(null)
+  const [adding, setAdding] = useState<AddState | null>(null)
   const [deleting, setDeleting] = useState<HistorySession | null>(null)
   const [busy, setBusy] = useState(false)
   const toast = useToast()
@@ -116,7 +146,47 @@ export default function HistoryTab({
       extend_count: s.延長回数,
       option_count: s.オプション回数,
       note: s.備考,
+      cancelled: !!s.キャンセル,
     })
+  }
+
+  function openAdd() {
+    setAdding({
+      kind: 'normal',
+      cast_name: castName,
+      room_name: '',
+      service_type: pricing[0]?.key || 'normal',
+      customer_names: '',
+      datetime: nowJstInput(),
+      extend_count: 0,
+      option_count: 0,
+      note: '',
+    })
+  }
+
+  async function saveAdd() {
+    if (!adding) return
+    if (!adding.datetime) { toast.show('日時を入力してください', 'err'); return }
+    setBusy(true)
+    const r = await db.call('addHistorySession', {
+      castName: adding.cast_name,
+      room: adding.room_name || undefined,
+      serviceType: adding.service_type,
+      customerNames: adding.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean),
+      startedAt: fromLocalInput(adding.datetime),
+      extendCount: adding.extend_count,
+      optionCount: adding.option_count,
+      note: adding.note,
+      cancelled: adding.kind === 'cancel',
+    })
+    setBusy(false)
+    if (r.ok) {
+      toast.show(adding.kind === 'cancel' ? 'キャンセルを記録しました' : '履歴を追加しました')
+      setAdding(null)
+      load()
+    } else {
+      toast.show((r as { error: string }).error || '追加に失敗しました', 'err')
+    }
   }
 
   async function saveEdit() {
@@ -171,6 +241,20 @@ export default function HistoryTab({
     return basePrice * nCust * (1 + ext) + optPrice * opt
   })()
 
+  // 追加中の収益プレビュー（キャンセルは常に0）
+  const addPreview = (() => {
+    if (!adding || adding.kind === 'cancel') return 0
+    const svc = pricing.find((p) => p.key === adding.service_type)
+    const optEntry = pricing.find((p) => p.key === 'option')
+    const basePrice = svc?.price ?? 0
+    const optPrice = optEntry?.price ?? 500000  // フォールバック（実際の額はサーバ側で算出）
+    const custs = adding.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+    const nCust = Math.max(1, custs.length)
+    const ext = Math.max(0, adding.extend_count)
+    const opt = Math.max(0, adding.option_count)
+    return basePrice * nCust * (1 + ext) + optPrice * opt
+  })()
+
   return (
     <div className="history-tab">
       <div className="card filter-card">
@@ -222,6 +306,8 @@ export default function HistoryTab({
         </div>
       </div>
 
+      <button className="btn-add-top" onClick={openAdd}>＋ 履歴を追加（過去分・キャンセル）</button>
+
       {err && <div className="card"><p className="err">エラー: {err}</p></div>}
       {loading && !list.length && <div className="card"><p className="muted">読み込み中...</p></div>}
       {!loading && !filtered.length && (
@@ -231,11 +317,15 @@ export default function HistoryTab({
       {filtered.map((s) => (
         <div key={s.session_id} className="history-card">
           <div className="history-header">
-            <span className={`badge ${s.接客種別 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
-              {s.接客種別 === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
-              {s.接客種別表示名 || s.接客種別}
-            </span>
-            <span className="history-revenue">{fmtCurrency(s.収益金)}</span>
+            {s.キャンセル ? (
+              <span className="badge badge-cancel">キャンセル</span>
+            ) : (
+              <span className={`badge ${s.接客種別 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
+                {s.接客種別 === 'vip' && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
+                {s.接客種別表示名 || s.接客種別}
+              </span>
+            )}
+            <span className="history-revenue">{s.キャンセル ? '—' : fmtCurrency(s.収益金)}</span>
           </div>
           <div className="history-row">
             <span className="muted">日時</span>
@@ -274,6 +364,155 @@ export default function HistoryTab({
         </div>
       ))}
 
+      {/* 追加モーダル */}
+      {adding && (
+        <Modal onClose={() => !busy && setAdding(null)}>
+          <h3>履歴を追加</h3>
+          <div className="form-group">
+            <label className="form-label">種別</label>
+            <div className="filter-actions" style={{ marginTop: 0 }}>
+              <button
+                className={`btn-pill ${adding.kind === 'normal' ? 'active' : ''}`}
+                onClick={() => setAdding((p) => (p ? { ...p, kind: 'normal' } : null))}
+              >
+                通常の接客
+              </button>
+              <button
+                className={`btn-pill ${adding.kind === 'cancel' ? 'active' : ''}`}
+                onClick={() => setAdding((p) => (p ? { ...p, kind: 'cancel' } : null))}
+              >
+                キャンセル
+              </button>
+            </div>
+          </div>
+          <div className="form-row">
+            <div className="form-group">
+              <label className="form-label">対応者</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={adding.cast_name}
+                  onChange={(e) => setAdding((p) => (p ? { ...p, cast_name: e.target.value } : null))}
+                  disabled={!isAdmin}
+                  title={!isAdmin ? '管理者のみ変更可能' : ''}
+                >
+                  {(casts.length ? casts : [castName]).map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            {adding.kind === 'normal' && (
+              <div className="form-group">
+                <label className="form-label">ルーム</label>
+                <div className="select-wrap">
+                  <select
+                    className="form-select"
+                    value={adding.room_name}
+                    onChange={(e) => setAdding((p) => (p ? { ...p, room_name: e.target.value } : null))}
+                  >
+                    <option value="">—</option>
+                    {rooms.map((r) => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+          {adding.kind === 'normal' && (
+            <div className="form-group">
+              <label className="form-label">接客種別</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={adding.service_type}
+                  onChange={(e) => setAdding((p) => (p ? { ...p, service_type: e.target.value } : null))}
+                >
+                  {pricing.map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.label} ({fmtCurrency(p.price)})
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">顧客名（カンマ区切りで複数）</label>
+            <input
+              type="text"
+              className="form-input"
+              value={adding.customer_names}
+              onChange={(e) => setAdding((p) => (p ? { ...p, customer_names: e.target.value } : null))}
+              placeholder="顧客名"
+            />
+          </div>
+          <div className="form-group">
+            <label className="form-label">日時</label>
+            <input
+              type="datetime-local"
+              className="form-input"
+              value={adding.datetime}
+              onChange={(e) => setAdding((p) => (p ? { ...p, datetime: e.target.value } : null))}
+            />
+            <button
+              type="button"
+              className="btn-pill"
+              style={{ marginTop: 8 }}
+              onClick={() => setAdding((p) => (p ? { ...p, datetime: nowJstInput() } : null))}
+            >
+              <Clock size={13} style={{ verticalAlign: '-2px', marginRight: 5 }} />
+              現在時刻を入力
+            </button>
+          </div>
+          {adding.kind === 'normal' && (
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">延長回数</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="0"
+                  value={adding.extend_count}
+                  onChange={(e) =>
+                    setAdding((p) => (p ? { ...p, extend_count: Math.max(0, Number(e.target.value) || 0) } : null))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">オプション回数</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="0"
+                  value={adding.option_count}
+                  onChange={(e) =>
+                    setAdding((p) => (p ? { ...p, option_count: Math.max(0, Number(e.target.value) || 0) } : null))
+                  }
+                />
+              </div>
+            </div>
+          )}
+          <div className="form-group">
+            <label className="form-label">備考</label>
+            <textarea
+              className="form-input"
+              value={adding.note}
+              onChange={(e) => setAdding((p) => (p ? { ...p, note: e.target.value } : null))}
+              placeholder="備考（任意）"
+            />
+          </div>
+          <div className="edit-revenue-preview">
+            {adding.kind === 'cancel'
+              ? <>キャンセル記録のため収益は <strong>0円</strong>（件数のみ）</>
+              : <>収益金: <strong>{fmtCurrency(addPreview)}</strong></>}
+          </div>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setAdding(null)} disabled={busy}>キャンセル</button>
+            <button className="btn-primary" style={{ width: 'auto' }} onClick={saveAdd} disabled={busy}>
+              {busy ? '保存中...' : '追加'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
       {/* 編集モーダル */}
       {editing && (
         <Modal onClose={() => !busy && setEditing(null)}>
@@ -308,22 +547,24 @@ export default function HistoryTab({
               </div>
             </div>
           </div>
-          <div className="form-group">
-            <label className="form-label">接客種別</label>
-            <div className="select-wrap">
-              <select
-                className="form-select"
-                value={editing.service_type}
-                onChange={(e) => setEditing((p) => (p ? { ...p, service_type: e.target.value } : null))}
-              >
-                {pricing.map((p) => (
-                  <option key={p.key} value={p.key}>
-                    {p.label} ({fmtCurrency(p.price)})
-                  </option>
-                ))}
-              </select>
+          {!editing.cancelled && (
+            <div className="form-group">
+              <label className="form-label">接客種別</label>
+              <div className="select-wrap">
+                <select
+                  className="form-select"
+                  value={editing.service_type}
+                  onChange={(e) => setEditing((p) => (p ? { ...p, service_type: e.target.value } : null))}
+                >
+                  {pricing.map((p) => (
+                    <option key={p.key} value={p.key}>
+                      {p.label} ({fmtCurrency(p.price)})
+                    </option>
+                  ))}
+                </select>
+              </div>
             </div>
-          </div>
+          )}
           <div className="form-group">
             <label className="form-label">顧客名（カンマ区切りで複数）</label>
             <input
@@ -333,34 +574,36 @@ export default function HistoryTab({
               onChange={(e) => setEditing((p) => (p ? { ...p, customer_names: e.target.value } : null))}
             />
           </div>
-          <div className="form-row">
-            <div className="form-group">
-              <label className="form-label">延長回数</label>
-              <input
-                type="number"
-                className="form-input"
-                min="0"
-                value={editing.extend_count}
-                onChange={(e) =>
-                  setEditing((p) => (p ? { ...p, extend_count: Math.max(0, Number(e.target.value) || 0) } : null))
-                }
-              />
+          {!editing.cancelled && (
+            <div className="form-row">
+              <div className="form-group">
+                <label className="form-label">延長回数</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="0"
+                  value={editing.extend_count}
+                  onChange={(e) =>
+                    setEditing((p) => (p ? { ...p, extend_count: Math.max(0, Number(e.target.value) || 0) } : null))
+                  }
+                />
+              </div>
+              <div className="form-group">
+                <label className="form-label">オプション回数</label>
+                <input
+                  type="number"
+                  className="form-input"
+                  min="0"
+                  value={editing.option_count}
+                  onChange={(e) =>
+                    setEditing((p) =>
+                      p ? { ...p, option_count: Math.max(0, Number(e.target.value) || 0) } : null,
+                    )
+                  }
+                />
+              </div>
             </div>
-            <div className="form-group">
-              <label className="form-label">オプション回数</label>
-              <input
-                type="number"
-                className="form-input"
-                min="0"
-                value={editing.option_count}
-                onChange={(e) =>
-                  setEditing((p) =>
-                    p ? { ...p, option_count: Math.max(0, Number(e.target.value) || 0) } : null,
-                  )
-                }
-              />
-            </div>
-          </div>
+          )}
           <div className="form-group">
             <label className="form-label">備考</label>
             <textarea
@@ -370,7 +613,9 @@ export default function HistoryTab({
             />
           </div>
           <div className="edit-revenue-preview">
-            再計算後の収益金: <strong>{fmtCurrency(editPreview)}</strong>
+            {editing.cancelled
+              ? <>キャンセル記録のため収益は <strong>0円</strong>（件数のみ）</>
+              : <>再計算後の収益金: <strong>{fmtCurrency(editPreview)}</strong></>}
           </div>
           <div className="modal-actions">
             <button className="btn-secondary" onClick={() => setEditing(null)} disabled={busy}>キャンセル</button>

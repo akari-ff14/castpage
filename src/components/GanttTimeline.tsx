@@ -12,6 +12,7 @@ export interface GanttReservation {
   予約時間: number   // 対応時間（分）
   予約日時: string
   ルーム: string
+  converted?: boolean   // 接客開始済み → タイムラインからは消す
 }
 
 interface Bar {
@@ -143,6 +144,8 @@ export default function GanttTimeline({
 
     // 予約
     for (const r of reservations) {
+      // 接客開始済みの予約は、対応バーを優先してタイムラインから消す
+      if (r.converted) continue
       const startMs = new Date(r.予約日時).getTime()
       if (isNaN(startMs)) continue
       const endMs = startMs + (Number(r.予約時間) || RESERVATION_DEFAULT_MIN) * 60 * 1000

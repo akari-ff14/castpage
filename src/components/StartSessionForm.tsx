@@ -26,6 +26,7 @@ interface BlMatch {
 export interface SessionPreset {
   customerName: string
   room: string
+  reservationId?: string   // 予約から開始した場合のみ。開始後にその予約をタイムラインから消す
 }
 
 interface Props {
@@ -54,6 +55,8 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
     preset?.customerName ? [preset.customerName] : [''],
   )
   const [note, setNote] = useState('')
+  // 予約由来の場合だけ保持（preset は mount 直後に親側で null に戻されるため初期値で確保）
+  const [reservationId] = useState(preset?.reservationId)
   const [presetSlots, setPresetSlots] = useState(0)
   const [busy, setBusy] = useState(false)
   const [blWarning, setBlWarning] = useState<BlMatch[] | null>(null)
@@ -174,6 +177,7 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
         note: note.trim(),
         serviceType,
         presetSlots: presetSlots || 1,
+        reservationId,
       })
       if (r.ok) {
         toast.show('応対を開始しました')
