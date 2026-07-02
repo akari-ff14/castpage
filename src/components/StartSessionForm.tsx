@@ -51,9 +51,14 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
   const [rooms, setRooms] = useState<RoomData[]>([])
   const [pricing, setPricing] = useState<PricingEntry[]>([])
   const [room, setRoom] = useState(preset?.room || '')
-  const [customerNames, setCustomerNames] = useState<string[]>(
-    preset?.customerName ? [preset.customerName] : [''],
-  )
+  // 予約由来の顧客名はカンマ/読点区切りの複数名（お連れ様）を各入力欄に展開する
+  const [customerNames, setCustomerNames] = useState<string[]>(() => {
+    const names = String(preset?.customerName || '')
+      .split(/[,、]/)
+      .map((s) => s.trim())
+      .filter(Boolean)
+    return names.length ? names : ['']
+  })
   const [note, setNote] = useState('')
   // 予約由来の場合だけ保持（preset は mount 直後に親側で null に戻されるため初期値で確保）
   const [reservationId] = useState(preset?.reservationId)

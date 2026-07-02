@@ -13,6 +13,7 @@ export interface GanttReservation {
   予約日時: string
   ルーム: string
   converted?: boolean   // 接客開始済み → タイムラインからは消す
+  キャンセル済?: boolean // キャンセル済み予約 → タイムラインからは消す
 }
 
 interface Bar {
@@ -108,10 +109,15 @@ export default function GanttTimeline({
     }
 
     // 対応中セッション
+    // キャストごとの対応時間帯も控えておき、時間が被る予約バーは消す（対応中を優先表示）
+    const sessionRanges = new Map<string, Array<{ start: number; end: number }>>()
     for (const s of sessions) {
       const startMs = new Date(s.開始時間).getTime()
       const endMs = new Date(s.対応終了時間).getTime()
       if (isNaN(startMs) || isNaN(endMs)) continue
+      const key = s.対応者 || '（未割当）'
+      if (!sessionRanges.has(key)) sessionRanges.set(key, [])
+      sessionRanges.get(key)!.push({ start: startMs, end: endMs })
       const c = clampBar(startMs, endMs)
       if (c) {
         ensure(s.対応者).push({
@@ -144,11 +150,14 @@ export default function GanttTimeline({
 
     // 予約
     for (const r of reservations) {
-      // 接客開始済みの予約は、対応バーを優先してタイムラインから消す
-      if (r.converted) continue
+      // 接客開始済み・キャンセル済みの予約はタイムラインから消す
+      if (r.converted || r.キャンセル済) continue
       const startMs = new Date(r.予約日時).getTime()
       if (isNaN(startMs)) continue
       const endMs = startMs + (Number(r.予約時間) || RESERVATION_DEFAULT_MIN) * 60 * 1000
+      // 同じキャストの対応中バーと時間が被る予約は、対応中の表示を優先して消す
+      const ranges = sessionRanges.get(r.キャスト名 || '（未割当）')
+      if (ranges?.some((sr) => sr.start < endMs && sr.end > startMs)) continue
       const c = clampBar(startMs, endMs)
       if (c) {
         ensure(r.キャスト名).push({

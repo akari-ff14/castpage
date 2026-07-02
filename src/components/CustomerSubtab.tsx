@@ -18,6 +18,7 @@ interface ReservationLite {
   顧客名: string
   キャスト名: string
   予約日時: string
+  キャンセル済?: boolean
 }
 
 interface CustomerGroup {
@@ -27,6 +28,7 @@ interface CustomerGroup {
   lastVisit: Date | null
   nextReservation: Date | null   // 最も近い未来の予約（無ければ最新の予約）
   hasFutureReservation: boolean
+  cancelledResCount: number      // キャンセル済み予約の回数
   casts: string[]
 }
 
@@ -84,7 +86,7 @@ export default function CustomerSubtab() {
       const name = rawName || '—'
       let g = map.get(name)
       if (!g) {
-        g = { name, records: [], reservations: [], lastVisit: null, nextReservation: null, hasFutureReservation: false, casts: [] }
+        g = { name, records: [], reservations: [], lastVisit: null, nextReservation: null, hasFutureReservation: false, cancelledResCount: 0, casts: [] }
         map.set(name, g)
       }
       return g
@@ -116,6 +118,11 @@ export default function CustomerSubtab() {
     for (const r of filteredRes) {
       const g = ensure(r.顧客名)
       g.reservations.push(r)
+      // キャンセル済み予約は回数だけ残し、次回予約の判定からは除外する
+      if (r.キャンセル済) {
+        g.cancelledResCount += 1
+        continue
+      }
       const d = new Date(r.予約日時)
       if (!isNaN(d.getTime())) {
         const future = d.getTime() >= now
@@ -131,11 +138,23 @@ export default function CustomerSubtab() {
       }
     }
 
-    const recency = (g: CustomerGroup) => g.lastVisit?.getTime() || g.nextReservation?.getTime() || 0
     const list = [...map.values()]
     if (sort === 'visits_desc') list.sort((a, b) => b.records.length - a.records.length)
     else if (sort === 'visits_asc') list.sort((a, b) => a.records.length - b.records.length)
-    else list.sort((a, b) => recency(b) - recency(a))
+    else {
+      // 最終来店（新しい順）: 来店実績のある顧客を最終来店の降順で先頭に。
+      // 来店記録が無い顧客（予約のみ）は後ろに回し、予約日時の新しい順で並べる。
+      // ※以前は未来の予約日時もソートキーに混ざっていたため、
+      //   予約だけの顧客が常に最上位に来て「最新の来店が上に出ない」状態だった
+      list.sort((a, b) => {
+        const av = a.lastVisit?.getTime() ?? null
+        const bv = b.lastVisit?.getTime() ?? null
+        if (av !== null && bv !== null) return bv - av
+        if (av !== null) return -1
+        if (bv !== null) return 1
+        return (b.nextReservation?.getTime() || 0) - (a.nextReservation?.getTime() || 0)
+      })
+    }
     return list
   }, [all, reservations, castFilter, search, sort])
 
@@ -261,6 +280,9 @@ export default function CustomerSubtab() {
                 最終来店: {g.lastVisit ? fmtDate(g.lastVisit) : '—'} ｜ 担当: {g.casts.join('、') || '—'}
                 {g.nextReservation && (
                   <> ｜ {g.hasFutureReservation ? '次回予約' : '予約'}: {fmtDateTime(g.nextReservation)}</>
+                )}
+                {g.cancelledResCount > 0 && (
+                  <> ｜ 予約キャンセル: {g.cancelledResCount}回</>
                 )}
               </div>
               {memo && <div className="customer-note-preview">{memo}</div>}

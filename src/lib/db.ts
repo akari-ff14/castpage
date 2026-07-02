@@ -71,6 +71,15 @@ export interface ReservationShape {
   作成日時: string
   更新日時: string
   converted: boolean   // 接客開始済み（タイムラインから非表示にする）
+  キャンセル済: boolean // 予約キャンセル（履歴として残すがタイムライン・次回予約からは除外）
+}
+
+// 予約フォームで顧客名を入れた時に出す来店サマリー
+export interface CustomerSummary {
+  visitCount: number          // 来店回数（customer_visits ベース）
+  lastVisitAt: string | null  // 最終来店日時
+  casts: string[]             // 担当したことのあるキャスト
+  cancelledResCount: number   // 予約キャンセル済みの回数
 }
 
 export interface FinishBreakdown {
@@ -285,7 +294,7 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 export async function getReservations(): Promise<ReservationShape[]> {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, converted_at, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
@@ -301,6 +310,7 @@ export async function getReservations(): Promise<ReservationShape[]> {
     作成日時: r.created_at,
     更新日時: r.updated_at,
     converted: !!r.converted_at,
+    キャンセル済: !!r.cancelled,
   }))
 }
 
@@ -631,6 +641,7 @@ export async function addReservation(payload: {
   reservationType: '事前' | '当日'
   reservationPrice?: number
   durationMin?: number
+  cancelled?: boolean
 }): Promise<ReservationShape> {
   const cId = await castIdByName(payload.castName)
   const rId = payload.room ? await roomIdByName(payload.room) : null
@@ -645,8 +656,9 @@ export async function addReservation(payload: {
       reserved_at: new Date(payload.datetime).toISOString(),
       room_id: rId,
       note: payload.note || '',
+      cancelled: !!payload.cancelled,
     })
-    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .single()
   if (error) throw error
   return {
@@ -662,6 +674,7 @@ export async function addReservation(payload: {
     作成日時: data.created_at,
     更新日時: data.updated_at,
     converted: false,
+    キャンセル済: !!data.cancelled,
   }
 }
 
@@ -675,6 +688,7 @@ export async function updateReservation(payload: {
   reservationType?: '事前' | '当日'
   reservationPrice?: number
   durationMin?: number
+  cancelled?: boolean
 }): Promise<void> {
   const updates: Record<string, unknown> = {}
   if (payload.castName !== undefined) updates.cast_id = await castIdByName(payload.castName)
@@ -687,6 +701,7 @@ export async function updateReservation(payload: {
   }
   if (payload.reservationPrice !== undefined) updates.reservation_price = Number(payload.reservationPrice) || 0
   if (payload.durationMin !== undefined) updates.duration_min = Math.max(30, Number(payload.durationMin) || 60)
+  if (payload.cancelled !== undefined) updates.cancelled = !!payload.cancelled
   const { error } = await supabase.from('reservations').update(updates).eq('id', payload.reservationId)
   if (error) throw error
 }
@@ -694,6 +709,43 @@ export async function updateReservation(payload: {
 export async function deleteReservation(reservationId: string): Promise<void> {
   const { error } = await supabase.from('reservations').delete().eq('id', reservationId)
   if (error) throw error
+}
+
+// 予約フォームで顧客名を入力した時に出す来店サマリー（リピート判定用）
+export async function getCustomerSummary(customerName: string): Promise<CustomerSummary> {
+  const name = String(customerName || '').trim()
+  if (!name) return { visitCount: 0, lastVisitAt: null, casts: [], cancelledResCount: 0 }
+
+  // ilike のワイルドカードをエスケープ（予約側は複数名がカンマ区切りで入るため部分一致で探す）
+  const escaped = name.replace(/[%_]/g, (m) => `\\${m}`)
+
+  const [visitsRes, cancelledRes] = await Promise.all([
+    supabase
+      .from('customer_visits')
+      .select('visited_at, cast:casts(name)')
+      .ilike('customer_name', escaped)
+      .order('visited_at', { ascending: false }),
+    supabase
+      .from('reservations')
+      .select('id', { count: 'exact', head: true })
+      .eq('cancelled', true)
+      .ilike('customer_name', `%${escaped}%`),
+  ])
+  if (visitsRes.error) throw visitsRes.error
+  if (cancelledRes.error) throw cancelledRes.error
+
+  const visits = visitsRes.data || []
+  const casts: string[] = []
+  for (const v of visits) {
+    const c = (v.cast as { name?: string } | null)?.name
+    if (c && !casts.includes(c)) casts.push(c)
+  }
+  return {
+    visitCount: visits.length,
+    lastVisitAt: visits[0]?.visited_at || null,
+    casts,
+    cancelledResCount: cancelledRes.count || 0,
+  }
 }
 
 // ============================================================
@@ -1569,6 +1621,7 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   addReservation,
   updateReservation,
   deleteReservation,
+  getCustomerSummary,
   addHistorySession,
   addToBlacklist,
   removeFromBlacklist,

@@ -162,6 +162,59 @@
   border: 1px solid var(--teal-border);
 }
 
+/* キャンセル済み予約 */
+.badge-cancelled {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+}
+
+.res-card.is-cancelled {
+  border-left-color: var(--red);
+  opacity: 0.65;
+}
+
+.res-card.is-cancelled .res-datetime {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+
+/* 予約フォームのキャンセル済チェック */
+.res-cancel-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.res-cancel-check input {
+  accent-color: var(--red);
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+/* 顧客名入力時の来店サマリー（リピート判定） */
+.res-cust-hint {
+  margin: 4px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.res-cust-hint.is-repeat {
+  color: var(--teal);
+}
+
+.res-cust-hint.is-repeat strong {
+  font-size: 13px;
+}
+
+.res-cust-hint.is-new {
+  color: var(--gold);
+}
+
 /* 現在時刻を入力ボタン */
 .btn-now {
   display: inline-flex;

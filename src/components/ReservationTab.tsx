@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react'
-import { db } from '../lib/db'
-import { fmtCurrency, fmtDateTime, fmtBizTime } from '../lib/format'
+import { db, type CustomerSummary } from '../lib/db'
+import { fmtCurrency, fmtDate, fmtDateTime, fmtBizTime } from '../lib/format'
 import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
-import { Play, Clock } from '../icons'
+import { Play, Clock, Plus, Minus, Sparkles } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import GanttTimeline from './GanttTimeline'
@@ -22,6 +22,7 @@ interface Reservation {
   作成日時: string
   更新日時: string
   converted: boolean   // 接客開始済み
+  キャンセル済: boolean // 予約キャンセル（履歴として残す）
 }
 
 interface PricingEntry {
@@ -92,25 +93,53 @@ function fromLocalInput(local: string): string {
 interface FormState {
   reservation_id?: string
   castName: string
-  customerName: string
+  customerNames: string[]  // 複数名（お連れ様）対応。保存時はカンマ区切りで結合
   datetime: string  // datetime-local input format
   room: string
   reservationType: '当日' | '事前'
   pricingKey: string
   durationMin: number  // 対応時間（分、30分刻み）
   note: string
+  cancelled: boolean   // 予約キャンセル済（キャストが埋まっていた等）
 }
 
 const emptyForm = (castName: string): FormState => ({
   castName,
-  customerName: '',
+  customerNames: [''],
   datetime: '',
   room: '',
   reservationType: '事前',
   pricingKey: 'normal',
   durationMin: 60,
   note: '',
+  cancelled: false,
 })
+
+// タブ切替（アンマウント）で入力途中の内容が消えないよう、下書きを sessionStorage に保持する。
+// 保存成功・明示的なキャンセル/閉じる操作で破棄し、画面切替では残す。
+const DRAFT_KEY = 'akari_reservation_draft'
+
+function loadDraft(): FormState | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY)
+    if (!raw) return null
+    const d = JSON.parse(raw) as FormState
+    if (!Array.isArray(d.customerNames)) d.customerNames = ['']
+    return d
+  } catch {
+    return null
+  }
+}
+
+function clearDraft() {
+  try { sessionStorage.removeItem(DRAFT_KEY) } catch { /* noop */ }
+}
+
+// 顧客名文字列（カンマ/読点区切り）→ 入力欄配列
+function splitCustomerNames(joined: string): string[] {
+  const names = String(joined || '').split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+  return names.length ? names : ['']
+}
 
 // 対応時間の候補（30分刻み、30分〜5時間）
 const DURATION_OPTIONS: number[] = Array.from({ length: 10 }, (_, i) => (i + 1) * 30)
@@ -140,11 +169,47 @@ export default function ReservationTab({
   const [casts, setCasts] = useState<string[]>([])
   const [rooms, setRooms] = useState<string[]>([])
   const [pricing, setPricing] = useState<PricingEntry[]>([])
-  const [formOpen, setFormOpen] = useState(false)
-  const [form, setForm] = useState<FormState>(emptyForm(castName))
+  // 下書きが残っていれば復元してフォームを開き直す（タブ切替による入力消失対策）
+  const [formOpen, setFormOpen] = useState(() => loadDraft() !== null)
+  const [form, setForm] = useState<FormState>(() => loadDraft() ?? emptyForm(castName))
   const [busy, setBusy] = useState(false)
   const [deleting, setDeleting] = useState<Reservation | null>(null)
+  // 顧客名 → 来店サマリー（リピート判定）。一度引いた名前はキャッシュ
+  const [custSummaries, setCustSummaries] = useState<Map<string, CustomerSummary>>(new Map())
   const toast = useToast()
+
+  // フォームを開いている間、入力内容を下書きとして保持
+  useEffect(() => {
+    if (!formOpen) return
+    try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch { /* noop */ }
+  }, [form, formOpen])
+
+  // 顧客名の入力が止まったら来店サマリーを取得（400ms デバウンス）
+  useEffect(() => {
+    if (!formOpen) return
+    const names = form.customerNames
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((n) => !custSummaries.has(n))
+    if (!names.length) return
+    const t = setTimeout(async () => {
+      const results = await Promise.all(
+        names.map((n) => db.call<CustomerSummary>('getCustomerSummary', n)),
+      )
+      setCustSummaries((prev) => {
+        const next = new Map(prev)
+        results.forEach((r, i) => { if (r.ok) next.set(names[i], r.data) })
+        return next
+      })
+    }, 400)
+    return () => clearTimeout(t)
+  }, [form.customerNames, formOpen, custSummaries])
+
+  // 明示的に閉じる（キャンセル/×）ときは下書きも破棄する
+  function closeForm() {
+    setFormOpen(false)
+    clearDraft()
+  }
 
   // 各キャストの稼働状況（誰が何時から何時まで対応か）をリアルタイム取得
   const { sessions: activeSessions } = useActiveSessions()
@@ -212,15 +277,37 @@ export default function ReservationTab({
     setForm({
       reservation_id: r.reservation_id,
       castName: r.キャスト名,
-      customerName: r.顧客名,
+      customerNames: splitCustomerNames(r.顧客名),
       datetime: toLocalInput(r.予約日時),
       room: r.ルーム || '',
       reservationType: (r.予約種別 === '当日' ? '当日' : '事前'),
       pricingKey: pricing0?.key || 'normal',
       durationMin,
       note: r.備考 || '',
+      cancelled: r.キャンセル済,
     })
     setFormOpen(true)
+  }
+
+  function updateCustName(i: number, value: string) {
+    setForm((f) => {
+      const next = [...f.customerNames]
+      next[i] = value
+      return { ...f, customerNames: next }
+    })
+  }
+
+  function addCustName() {
+    setForm((f) =>
+      f.customerNames.length >= 10 ? f : { ...f, customerNames: [...f.customerNames, ''] },
+    )
+  }
+
+  function removeCustName(i: number) {
+    setForm((f) => {
+      if (f.customerNames.length === 1) return { ...f, customerNames: [''] }
+      return { ...f, customerNames: f.customerNames.filter((_, idx) => idx !== i) }
+    })
   }
 
   const pricingEntry = pricing.find((p) => p.key === form.pricingKey)
@@ -250,13 +337,14 @@ export default function ReservationTab({
     const payload = {
       ...(form.reservation_id ? { reservationId: form.reservation_id } : {}),
       castName: form.castName,
-      customerName: form.customerName.trim(),
+      customerName: form.customerNames.map((s) => s.trim()).filter(Boolean).join(', '),
       datetime: fromLocalInput(form.datetime),
       room: form.room,
       reservationType: form.reservationType,
       reservationPrice: calcPrice,
       durationMin: form.durationMin,
       note: form.note.trim(),
+      cancelled: form.cancelled,
     }
     const r = form.reservation_id
       ? await db.call('updateReservation', payload)
@@ -264,7 +352,7 @@ export default function ReservationTab({
     setBusy(false)
     if (r.ok) {
       toast.show(form.reservation_id ? '予約を更新しました' : '予約を追加しました')
-      setFormOpen(false)
+      closeForm()
       load()
     } else {
       toast.show((r as { error: string }).error || '保存に失敗しました', 'err')
@@ -354,12 +442,13 @@ export default function ReservationTab({
       {!loading && !filtered.length && <div className="card empty-state">該当する予約はありません</div>}
 
       {filtered.map((r) => (
-        <div key={r.reservation_id} className="res-card">
+        <div key={r.reservation_id} className={`res-card${r.キャンセル済 ? ' is-cancelled' : ''}`}>
           <div className="res-header">
             <span className={`badge ${r.予約種別 === '当日' ? 'badge-normal' : 'badge-vip'}`}>
               {r.予約種別}
             </span>
             {r.converted && <span className="badge badge-converted">接客開始済み</span>}
+            {r.キャンセル済 && <span className="badge badge-cancelled">キャンセル済</span>}
             <span className="res-datetime">{fmtDateTime(r.予約日時)}</span>
           </div>
           <div className="res-body">
@@ -410,7 +499,7 @@ export default function ReservationTab({
             )}
           </div>
           <div className="res-actions">
-            {onStartSession && !r.converted && (
+            {onStartSession && !r.converted && !r.キャンセル済 && (
               <button
                 className="btn-res-start"
                 onClick={() => onStartSession({ customerName: r.顧客名, room: r.ルーム, reservationId: r.reservation_id })}
@@ -426,7 +515,7 @@ export default function ReservationTab({
       ))}
 
       {formOpen && (
-        <Modal onClose={() => !busy && setFormOpen(false)}>
+        <Modal onClose={() => !busy && closeForm()}>
           <h3>{form.reservation_id ? '予約を編集' : '予約を追加'}</h3>
           <div className="form-group">
             <label className="form-label">予約種別</label>
@@ -473,14 +562,67 @@ export default function ReservationTab({
             </div>
           </div>
           <div className="form-group">
-            <label className="form-label">顧客名</label>
-            <input
-              type="text"
-              className="form-input"
-              value={form.customerName}
-              onChange={(e) => setForm((f) => ({ ...f, customerName: e.target.value }))}
-              placeholder="顧客名"
-            />
+            <label className="form-label">顧客名（複数名可）</label>
+            <div className="customer-names">
+              {form.customerNames.map((n, i) => {
+                const nm = n.trim()
+                const summary = nm ? custSummaries.get(nm) : undefined
+                return (
+                  <div key={i}>
+                    <div className="customer-name-row">
+                      <input
+                        type="text"
+                        className="form-input"
+                        placeholder={i === 0 ? '顧客名' : `お連れ様 ${i + 1}`}
+                        value={n}
+                        onChange={(e) => updateCustName(i, e.target.value)}
+                        autoComplete="off"
+                      />
+                      {i === form.customerNames.length - 1 && form.customerNames.length < 10 ? (
+                        <button
+                          type="button"
+                          className="btn-cust-add"
+                          onClick={addCustName}
+                          title="お連れ様を追加"
+                          aria-label="お連れ様を追加"
+                        >
+                          <Plus size={18} />
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="btn-cust-rm"
+                          onClick={() => removeCustName(i)}
+                          title="この欄を削除"
+                          aria-label="この欄を削除"
+                        >
+                          <Minus size={18} />
+                        </button>
+                      )}
+                    </div>
+                    {summary && (
+                      <p className={`res-cust-hint ${summary.visitCount > 0 ? 'is-repeat' : 'is-new'}`}>
+                        {summary.visitCount > 0 ? (
+                          <>
+                            来店 <strong>{summary.visitCount}回</strong>
+                            {summary.lastVisitAt && <>（最終: {fmtDate(summary.lastVisitAt)}）</>}
+                            {summary.casts.length > 0 && <> ｜ 担当: {summary.casts.join('、')}</>}
+                          </>
+                        ) : (
+                          <>
+                            <Sparkles size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />
+                            来店記録なし（新規のお客様）
+                          </>
+                        )}
+                        {summary.cancelledResCount > 0 && (
+                          <> ｜ 予約キャンセル歴 {summary.cancelledResCount}回</>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
           <div className="form-row">
             <div className="form-group">
@@ -562,8 +704,18 @@ export default function ReservationTab({
               placeholder="備考（任意）"
             />
           </div>
+          <div className="form-group">
+            <label className="res-cancel-check">
+              <input
+                type="checkbox"
+                checked={form.cancelled}
+                onChange={(e) => setForm((f) => ({ ...f, cancelled: e.target.checked }))}
+              />
+              予約キャンセル済（キャストが埋まっていた等。履歴として残ります）
+            </label>
+          </div>
           <div className="modal-actions">
-            <button className="btn-secondary" onClick={() => setFormOpen(false)} disabled={busy}>
+            <button className="btn-secondary" onClick={closeForm} disabled={busy}>
               キャンセル
             </button>
             <button className="btn-primary" style={{ width: 'auto' }} onClick={save} disabled={busy}>
