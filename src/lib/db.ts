@@ -62,7 +62,6 @@ export interface ReservationShape {
   reservation_id: string
   キャスト名: string
   顧客名: string
-  予約種別: '当日' | '事前'
   予約金額: number
   予約時間: number   // 対応時間（分）
   予約日時: string
@@ -294,14 +293,13 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 export async function getReservations(): Promise<ReservationShape[]> {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
     reservation_id: r.id,
     キャスト名: (r.cast as { name?: string } | null)?.name || '',
     顧客名: r.customer_name,
-    予約種別: r.reservation_type === 'sameday' ? '当日' : '事前',
     予約金額: Number(r.reservation_price),
     予約時間: Number(r.duration_min) || 60,
     予約日時: r.reserved_at,
@@ -638,7 +636,6 @@ export async function addReservation(payload: {
   datetime: string
   room?: string
   note?: string
-  reservationType: '事前' | '当日'
   reservationPrice?: number
   durationMin?: number
   cancelled?: boolean
@@ -650,7 +647,8 @@ export async function addReservation(payload: {
     .insert({
       cast_id: cId,
       customer_name: payload.customerName || '',
-      reservation_type: payload.reservationType === '当日' ? 'sameday' : 'advance',
+      // 事前/当日の区分は UI から撤廃済み。カラムは NOT NULL 制約と旧データのため残し固定値を入れる
+      reservation_type: 'advance',
       reservation_price: Number(payload.reservationPrice) || 0,
       duration_min: Math.max(30, Number(payload.durationMin) || 60),
       reserved_at: new Date(payload.datetime).toISOString(),
@@ -658,14 +656,13 @@ export async function addReservation(payload: {
       note: payload.note || '',
       cancelled: !!payload.cancelled,
     })
-    .select('id, customer_name, reservation_type, reservation_price, duration_min, reserved_at, note, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .single()
   if (error) throw error
   return {
     reservation_id: data.id,
     キャスト名: (data.cast as { name?: string } | null)?.name || '',
     顧客名: data.customer_name,
-    予約種別: data.reservation_type === 'sameday' ? '当日' : '事前',
     予約金額: Number(data.reservation_price),
     予約時間: Number(data.duration_min) || 60,
     予約日時: data.reserved_at,
@@ -685,7 +682,6 @@ export async function updateReservation(payload: {
   datetime?: string
   room?: string
   note?: string
-  reservationType?: '事前' | '当日'
   reservationPrice?: number
   durationMin?: number
   cancelled?: boolean
@@ -696,9 +692,6 @@ export async function updateReservation(payload: {
   if (payload.datetime !== undefined) updates.reserved_at = new Date(payload.datetime).toISOString()
   if (payload.room !== undefined) updates.room_id = payload.room ? await roomIdByName(payload.room) : null
   if (payload.note !== undefined) updates.note = payload.note
-  if (payload.reservationType !== undefined) {
-    updates.reservation_type = payload.reservationType === '当日' ? 'sameday' : 'advance'
-  }
   if (payload.reservationPrice !== undefined) updates.reservation_price = Number(payload.reservationPrice) || 0
   if (payload.durationMin !== undefined) updates.duration_min = Math.max(30, Number(payload.durationMin) || 60)
   if (payload.cancelled !== undefined) updates.cancelled = !!payload.cancelled

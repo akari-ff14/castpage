@@ -8,7 +8,6 @@ export interface GanttReservation {
   reservation_id: string
   キャスト名: string
   顧客名: string
-  予約種別: string
   予約時間: number   // 対応時間（分）
   予約日時: string
   ルーム: string
@@ -25,7 +24,6 @@ interface Bar {
   widthPct: number
   customer: string
   room: string
-  resType?: string
 }
 
 interface Row {
@@ -169,7 +167,6 @@ export default function GanttTimeline({
           widthPct: c.width,
           customer: r.顧客名 || '（顧客名なし）',
           room: r.ルーム || '',
-          resType: r.予約種別,
         })
       }
       // 予約終了後の10分インターバル（この後から対応可能）
@@ -269,7 +266,7 @@ export default function GanttTimeline({
                   ) : (
                     <div
                       key={bar.id}
-                      className={`gantt-bar gantt-bar-${bar.kind}${bar.resType === '当日' ? ' is-sameday' : ''}`}
+                      className={`gantt-bar gantt-bar-${bar.kind}`}
                       style={{ left: `${bar.leftPct}%`, width: `${bar.widthPct}%` }}
                       title={`${row.cast}｜${bar.customer}${bar.room ? `（${bar.room}）` : ''}\n${fmtBizTime(bar.startMs)}〜${fmtBizTime(bar.endMs)}（${Math.round((bar.endMs - bar.startMs) / 60000)}分）${
                         bar.kind === 'reservation' ? ' ※予約' : ''

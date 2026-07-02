@@ -167,9 +167,6 @@
   border: 1.5px dashed var(--gold);
   color: var(--gold);
 }
-.gantt-bar-reservation.is-sameday {
-  border-style: solid;
-}
 
 /* 対応終了後のインターバル（次の対応可能まで） */
 .gantt-bar-interval {

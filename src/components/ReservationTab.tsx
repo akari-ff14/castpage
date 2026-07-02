@@ -13,7 +13,6 @@ interface Reservation {
   reservation_id: string
   キャスト名: string
   顧客名: string
-  予約種別: '当日' | '事前' | string
   予約金額: number
   予約時間: number
   予約日時: string
@@ -30,14 +29,6 @@ interface PricingEntry {
   label: string
   price: number
 }
-
-type FilterType = '当日' | '事前' | 'all'
-
-const RES_TYPES: Array<{ value: FilterType; label: string }> = [
-  { value: '当日', label: '当日予約' },
-  { value: '事前', label: '事前予約' },
-  { value: 'all', label: 'すべて' },
-]
 
 // JSTのISO風文字列→ datetime-local input value (YYYY-MM-DDTHH:mm)
 function toLocalInput(iso: string): string {
@@ -96,7 +87,6 @@ interface FormState {
   customerNames: string[]  // 複数名（お連れ様）対応。保存時はカンマ区切りで結合
   datetime: string  // datetime-local input format
   room: string
-  reservationType: '当日' | '事前'
   pricingKey: string
   durationMin: number  // 対応時間（分、30分刻み）
   note: string
@@ -108,7 +98,6 @@ const emptyForm = (castName: string): FormState => ({
   customerNames: [''],
   datetime: '',
   room: '',
-  reservationType: '事前',
   pricingKey: 'normal',
   durationMin: 60,
   note: '',
@@ -125,6 +114,7 @@ function loadDraft(): FormState | null {
     if (!raw) return null
     const d = JSON.parse(raw) as FormState
     if (!Array.isArray(d.customerNames)) d.customerNames = ['']
+    if (typeof d.cancelled !== 'boolean') d.cancelled = false
     return d
   } catch {
     return null
@@ -162,8 +152,7 @@ export default function ReservationTab({
   const [list, setList] = useState<Reservation[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
-  const [filter, setFilter] = useState<FilterType>('all')
-  const [castFilter, setCastFilter] = useState<'mine' | 'all'>('mine')
+  const [castFilter, setCastFilter] = useState<'mine' | 'all'>('all')
 
   // フォーム関連
   const [casts, setCasts] = useState<string[]>([])
@@ -258,7 +247,6 @@ export default function ReservationTab({
   }, [])
 
   const filtered = list.filter((r) => {
-    if (filter !== 'all' && r.予約種別 !== filter) return false
     if (castFilter === 'mine' && r.キャスト名 !== castName) return false
     return true
   })
@@ -280,7 +268,6 @@ export default function ReservationTab({
       customerNames: splitCustomerNames(r.顧客名),
       datetime: toLocalInput(r.予約日時),
       room: r.ルーム || '',
-      reservationType: (r.予約種別 === '当日' ? '当日' : '事前'),
       pricingKey: pricing0?.key || 'normal',
       durationMin,
       note: r.備考 || '',
@@ -340,7 +327,6 @@ export default function ReservationTab({
       customerName: form.customerNames.map((s) => s.trim()).filter(Boolean).join(', '),
       datetime: fromLocalInput(form.datetime),
       room: form.room,
-      reservationType: form.reservationType,
       reservationPrice: calcPrice,
       durationMin: form.durationMin,
       note: form.note.trim(),
@@ -377,28 +363,17 @@ export default function ReservationTab({
     <div className="reservation-tab">
       <div className="card filter-card">
         <div className="filter-actions">
-          {RES_TYPES.map((t) => (
-            <button
-              key={t.value}
-              className={`btn-pill ${filter === t.value ? 'active' : ''}`}
-              onClick={() => setFilter(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-        <div className="filter-actions">
+          <button
+            className={`btn-pill ${castFilter === 'all' ? 'active' : ''}`}
+            onClick={() => setCastFilter('all')}
+          >
+            すべて
+          </button>
           <button
             className={`btn-pill ${castFilter === 'mine' ? 'active' : ''}`}
             onClick={() => setCastFilter('mine')}
           >
             自分のみ
-          </button>
-          <button
-            className={`btn-pill ${castFilter === 'all' ? 'active' : ''}`}
-            onClick={() => setCastFilter('all')}
-          >
-            全員
           </button>
           <button className="btn-secondary" onClick={load} disabled={loading}>
             {loading ? '...' : '更新'}
@@ -444,9 +419,6 @@ export default function ReservationTab({
       {filtered.map((r) => (
         <div key={r.reservation_id} className={`res-card${r.キャンセル済 ? ' is-cancelled' : ''}`}>
           <div className="res-header">
-            <span className={`badge ${r.予約種別 === '当日' ? 'badge-normal' : 'badge-vip'}`}>
-              {r.予約種別}
-            </span>
             {r.converted && <span className="badge badge-converted">接客開始済み</span>}
             {r.キャンセル済 && <span className="badge badge-cancelled">キャンセル済</span>}
             <span className="res-datetime">{fmtDateTime(r.予約日時)}</span>
@@ -517,23 +489,6 @@ export default function ReservationTab({
       {formOpen && (
         <Modal onClose={() => !busy && closeForm()}>
           <h3>{form.reservation_id ? '予約を編集' : '予約を追加'}</h3>
-          <div className="form-group">
-            <label className="form-label">予約種別</label>
-            <div className="filter-actions" style={{ marginTop: 0 }}>
-              <button
-                className={`btn-pill ${form.reservationType === '事前' ? 'active' : ''}`}
-                onClick={() => setForm((f) => ({ ...f, reservationType: '事前' }))}
-              >
-                事前予約
-              </button>
-              <button
-                className={`btn-pill ${form.reservationType === '当日' ? 'active' : ''}`}
-                onClick={() => setForm((f) => ({ ...f, reservationType: '当日' }))}
-              >
-                当日予約
-              </button>
-            </div>
-          </div>
           <div className="form-row">
             <div className="form-group">
               <label className="form-label">キャスト</label>
