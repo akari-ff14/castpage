@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { db, type CustomerSummary } from '../lib/db'
 import { fmtCurrency, fmtDate, fmtDateTime, fmtBizTime } from '../lib/format'
 import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
-import { Play, Clock, Plus, Minus, Sparkles } from '../icons'
+import { Play, Clock, Plus, Minus, Sparkles, AlertTriangle } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import GanttTimeline from './GanttTimeline'
@@ -28,6 +28,11 @@ interface PricingEntry {
   key: string
   label: string
   price: number
+}
+
+interface BlMatch {
+  name: string
+  reason?: string
 }
 
 // JSTのISO風文字列→ datetime-local input value (YYYY-MM-DDTHH:mm)
@@ -165,6 +170,10 @@ export default function ReservationTab({
   const [deleting, setDeleting] = useState<Reservation | null>(null)
   // 顧客名 → 来店サマリー（リピート判定）。一度引いた名前はキャッシュ
   const [custSummaries, setCustSummaries] = useState<Map<string, CustomerSummary>>(new Map())
+  // 顧客名 → ブラックリスト該当（出禁チェック）。一度引いた名前はキャッシュ
+  const [blMatches, setBlMatches] = useState<Map<string, BlMatch[]>>(new Map())
+  // 保存時に BL 該当があった場合の確認モーダル
+  const [blConfirm, setBlConfirm] = useState<BlMatch[] | null>(null)
   const toast = useToast()
 
   // フォームを開いている間、入力内容を下書きとして保持
@@ -173,26 +182,32 @@ export default function ReservationTab({
     try { sessionStorage.setItem(DRAFT_KEY, JSON.stringify(form)) } catch { /* noop */ }
   }, [form, formOpen])
 
-  // 顧客名の入力が止まったら来店サマリーを取得（400ms デバウンス）
+  // 顧客名の入力が止まったら来店サマリー + BL照合を取得（400ms デバウンス）
   useEffect(() => {
     if (!formOpen) return
     const names = form.customerNames
       .map((s) => s.trim())
       .filter(Boolean)
-      .filter((n) => !custSummaries.has(n))
+      .filter((n) => !custSummaries.has(n) || !blMatches.has(n))
     if (!names.length) return
     const t = setTimeout(async () => {
-      const results = await Promise.all(
-        names.map((n) => db.call<CustomerSummary>('getCustomerSummary', n)),
-      )
+      const [sumResults, blResults] = await Promise.all([
+        Promise.all(names.map((n) => db.call<CustomerSummary>('getCustomerSummary', n))),
+        Promise.all(names.map((n) => db.call<BlMatch[]>('checkBlacklist', n))),
+      ])
       setCustSummaries((prev) => {
         const next = new Map(prev)
-        results.forEach((r, i) => { if (r.ok) next.set(names[i], r.data) })
+        sumResults.forEach((r, i) => { if (r.ok) next.set(names[i], r.data) })
+        return next
+      })
+      setBlMatches((prev) => {
+        const next = new Map(prev)
+        blResults.forEach((r, i) => { if (r.ok) next.set(names[i], r.data || []) })
         return next
       })
     }, 400)
     return () => clearTimeout(t)
-  }, [form.customerNames, formOpen, custSummaries])
+  }, [form.customerNames, formOpen, custSummaries, blMatches])
 
   // 明示的に閉じる（キャンセル/×）ときは下書きも破棄する
   function closeForm() {
@@ -203,22 +218,51 @@ export default function ReservationTab({
   // 各キャストの稼働状況（誰が何時から何時まで対応か）をリアルタイム取得
   const { sessions: activeSessions } = useActiveSessions()
 
-  // 対応可能になる時刻 = 対応終了時間 + 10分インターバル
+  // 全キャストの「次に入れる時刻」を計算する。
+  // 進行中の接客（終了予定 + インターバル）と、未来の予約（開始〜終了 + インターバル）を
+  // 塞がっている時間帯として扱い、今から見て最初に空く時刻を求める。
   const INTERVAL_MIN = 10
-  const availability = [...activeSessions]
-    .map((s) => {
-      const endMs = new Date(s.対応終了時間).getTime()
-      return {
-        session_id: s.session_id,
-        cast: s.対応者,
-        endMs,
-        availMs: endMs + INTERVAL_MIN * 60 * 1000,
-        customer: s.顧客名 || '',
-        room: s.ルーム || '',
-      }
-    })
-    .filter((a) => !isNaN(a.endMs))
-    .sort((a, b) => a.availMs - b.availMs)
+  const castAvailability = useMemo(() => {
+    const now = Date.now()
+    const INTERVAL_MS = INTERVAL_MIN * 60 * 1000
+    const busy = new Map<string, Array<{ start: number; end: number; label: string }>>()
+    const push = (cast: string, start: number, end: number, label: string) => {
+      if (!cast) return
+      if (!busy.has(cast)) busy.set(cast, [])
+      busy.get(cast)!.push({ start, end: end + INTERVAL_MS, label })
+    }
+    for (const s of activeSessions) {
+      const end = new Date(s.対応終了時間).getTime()
+      if (isNaN(end)) continue
+      push(s.対応者, 0, end, `対応中${s.顧客名 ? `（${s.顧客名}）` : ''}`)
+    }
+    for (const r of list) {
+      if (r.キャンセル済 || r.converted) continue
+      const start = new Date(r.予約日時).getTime()
+      if (isNaN(start)) continue
+      const end = start + (r.予約時間 || 60) * 60 * 1000
+      if (end + INTERVAL_MS <= now) continue  // 終わった予約は無視
+      push(r.キャスト名, start, end, `予約${r.顧客名 ? `（${r.顧客名}）` : ''}`)
+    }
+    const allCasts = casts.length
+      ? casts
+      : [...new Set([...activeSessions.map((s) => s.対応者), ...list.map((r) => r.キャスト名)])].filter(Boolean)
+    return allCasts
+      .map((cast) => {
+        const blocks = (busy.get(cast) || []).sort((a, b) => a.start - b.start)
+        let availMs = now
+        let blockedBy = ''
+        // 連続して塞がっている区間をたどって最初の空きを探す
+        for (const b of blocks) {
+          if (b.start <= availMs && availMs < b.end) {
+            availMs = b.end
+            blockedBy = b.label
+          }
+        }
+        return { cast, availMs, busyNow: availMs > now, blockedBy }
+      })
+      .sort((a, b) => a.availMs - b.availMs || a.cast.localeCompare(b.cast, 'ja'))
+  }, [activeSessions, list, casts])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -315,11 +359,41 @@ export default function ReservationTab({
   const setDateTime = (date: string, time: string) =>
     setForm((f) => ({ ...f, datetime: date || time ? `${date}T${time}` : '' }))
 
+  // 保存前チェック（出禁照合）。該当があれば確認モーダルを出して止める
   async function save() {
     if (!form.castName) { toast.show('キャスト名が必要です', 'err'); return }
     const [dPart, tPart] = form.datetime.split('T')
     if (!dPart) { toast.show('予約日が必要です', 'err'); return }
     if (!tPart) { toast.show('予約時刻が必要です', 'err'); return }
+
+    // 出禁（ブラックリスト）チェック。キャンセル記録として残す場合はスキップ
+    if (!form.cancelled) {
+      setBusy(true)
+      try {
+        const names = form.customerNames.map((s) => s.trim()).filter(Boolean)
+        const blResults = await Promise.all(names.map((n) => db.call<BlMatch[]>('checkBlacklist', n)))
+        const matches: BlMatch[] = []
+        const seen = new Set<string>()
+        for (const r of blResults) {
+          if (r.ok && Array.isArray(r.data)) {
+            for (const m of r.data) {
+              if (!seen.has(m.name)) { seen.add(m.name); matches.push(m) }
+            }
+          }
+        }
+        if (matches.length) {
+          setBusy(false)
+          setBlConfirm(matches)
+          return
+        }
+      } catch { /* 照合失敗時は保存に進む */ }
+      setBusy(false)
+    }
+    await doSave()
+  }
+
+  async function doSave() {
+    setBlConfirm(null)
     setBusy(true)
     const payload = {
       ...(form.reservation_id ? { reservationId: form.reservation_id } : {}),
@@ -384,20 +458,23 @@ export default function ReservationTab({
       <div className="card avail-card">
         <div className="avail-head">
           <Clock size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-          対応可能になる時刻（終了＋{INTERVAL_MIN}分インターバル）
+          各キャストの次に入れる時刻（進行中の接客・予約 ＋{INTERVAL_MIN}分インターバルを考慮）
         </div>
-        {availability.length === 0 ? (
-          <p className="muted small" style={{ margin: 0 }}>現在 対応中のキャストはいません（全員 対応可能）</p>
+        {castAvailability.length === 0 ? (
+          <p className="muted small" style={{ margin: 0 }}>キャスト情報を読み込み中...</p>
         ) : (
           <div className="avail-list">
-            {availability.map((a) => (
-              <div key={a.session_id} className="avail-row">
+            {castAvailability.map((a) => (
+              <div key={a.cast} className="avail-row">
                 <span className="avail-cast">{a.cast}</span>
-                <span className="avail-time">{fmtBizTime(a.availMs)}〜</span>
-                <span className="avail-meta muted">
-                  対応 {fmtBizTime(a.endMs)} 終了
-                  {a.room ? ` / ${a.room}` : ''}{a.customer ? ` / ${a.customer}` : ''}
-                </span>
+                {a.busyNow ? (
+                  <>
+                    <span className="avail-time">{fmtBizTime(a.availMs)}〜</span>
+                    <span className="avail-meta muted">{a.blockedBy}</span>
+                  </>
+                ) : (
+                  <span className="avail-time avail-free">今すぐOK</span>
+                )}
               </div>
             ))}
           </div>
@@ -516,6 +593,31 @@ export default function ReservationTab({
               </div>
             </div>
           </div>
+
+          {/* 全キャストの次の予約可能時間（モーダル内でも見えるように） */}
+          <div className="res-modal-avail">
+            <div className="res-modal-avail-head">
+              <Clock size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+              各キャストの次の予約可能時間（タップでキャスト選択）
+            </div>
+            <div className="res-modal-avail-grid">
+              {castAvailability.map((a) => (
+                <button
+                  type="button"
+                  key={a.cast}
+                  className={`res-modal-avail-chip${form.castName === a.cast ? ' active' : ''}`}
+                  onClick={() => setForm((f) => ({ ...f, castName: a.cast }))}
+                  title={a.busyNow ? a.blockedBy : '今すぐ対応可能'}
+                >
+                  <span className="chip-cast">{a.cast}</span>
+                  <span className={`chip-time${a.busyNow ? '' : ' free'}`}>
+                    {a.busyNow ? `${fmtBizTime(a.availMs)}〜` : '今すぐOK'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div className="form-group">
             <label className="form-label">顧客名（複数名可）</label>
             <div className="customer-names">
@@ -561,7 +663,7 @@ export default function ReservationTab({
                           <>
                             来店 <strong>{summary.visitCount}回</strong>
                             {summary.lastVisitAt && <>（最終: {fmtDate(summary.lastVisitAt)}）</>}
-                            {summary.casts.length > 0 && <> ｜ 担当: {summary.casts.join('、')}</>}
+                            {summary.lastCast && <> ｜ 最終対応: {summary.lastCast}</>}
                           </>
                         ) : (
                           <>
@@ -572,6 +674,13 @@ export default function ReservationTab({
                         {summary.cancelledResCount > 0 && (
                           <> ｜ 予約キャンセル歴 {summary.cancelledResCount}回</>
                         )}
+                      </p>
+                    )}
+                    {nm && (blMatches.get(nm)?.length ?? 0) > 0 && (
+                      <p className="res-bl-hint">
+                        <AlertTriangle size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                        出禁（ブラックリスト）該当:
+                        {blMatches.get(nm)!.map((m) => ` ${m.name}${m.reason ? `（${m.reason}）` : ''}`).join('、')}
                       </p>
                     )}
                   </div>
@@ -675,6 +784,34 @@ export default function ReservationTab({
             </button>
             <button className="btn-primary" style={{ width: 'auto' }} onClick={save} disabled={busy}>
               {busy ? '保存中...' : '保存'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {/* 出禁（ブラックリスト）該当時の確認 */}
+      {blConfirm && (
+        <Modal onClose={() => !busy && setBlConfirm(null)}>
+          <h3>
+            <AlertTriangle size={18} style={{ verticalAlign: '-3px', marginRight: 6, color: 'var(--red)' }} />
+            出禁のお客様が含まれています
+          </h3>
+          <p className="muted">以下の顧客がブラックリストに登録されています:</p>
+          <ul className="bl-list">
+            {blConfirm.map((m) => (
+              <li key={m.name}>
+                <strong>{m.name}</strong>
+                {m.reason && <span className="muted">（{m.reason}）</span>}
+              </li>
+            ))}
+          </ul>
+          <p className="muted">この予約は保存しないことをおすすめします。それでも保存しますか？</p>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setBlConfirm(null)} disabled={busy}>
+              保存しない
+            </button>
+            <button className="btn-danger" onClick={doSave} disabled={busy}>
+              {busy ? '保存中...' : 'それでも保存する'}
             </button>
           </div>
         </Modal>

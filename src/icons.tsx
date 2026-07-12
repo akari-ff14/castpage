@@ -202,6 +202,12 @@ export const ChevronRight = (p: IconProps) => (
   </svg>
 )
 
+export const ChevronLeft = (p: IconProps) => (
+  <svg {...base(p)}>
+    <polyline points="15 18 9 12 15 6" />
+  </svg>
+)
+
 export const Swap = (p: IconProps) => (
   <svg {...base(p)}>
     <path d="M16 3l4 4-4 4" />

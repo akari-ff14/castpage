@@ -9,9 +9,11 @@ import {
   TrendingUp,
   Play,
   Clock,
+  Edit,
 } from '../icons'
 import StatusCard from './StatusCard'
 import ActivityFeed from './ActivityFeed'
+import { OPEN_ADD_HISTORY_KEY } from './HistoryTab'
 import type { RouteId } from './Sidebar'
 import './HomeView.css'
 
@@ -314,6 +316,21 @@ function TodayRevenueCard({
           </div>
           <div className="muted small">{data?.businessDay}</div>
         </>
+      )}
+      {!loading && (
+        <button
+          type="button"
+          className="status-card-cta"
+          onClick={(e) => {
+            e.stopPropagation()
+            // 履歴タブを開いて追加モーダルを自動オープンする
+            try { sessionStorage.setItem(OPEN_ADD_HISTORY_KEY, '1') } catch { /* noop */ }
+            onNavigate('history')
+          }}
+        >
+          <Edit size={14} style={{ marginRight: 6, verticalAlign: 'middle' }} />
+          本日の接客・売上を入力する
+        </button>
       )}
     </StatusCard>
   )

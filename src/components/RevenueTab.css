@@ -54,7 +54,7 @@
 
 .rev-cast-row {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr 1fr;
+  grid-template-columns: 1.2fr 0.6fr 1fr 1fr 1fr;
   gap: 6px;
   padding: 10px 12px;
   background: var(--bg2);
@@ -77,4 +77,120 @@
 .rev-cast-name {
   font-weight: 600;
   color: var(--text);
+}
+
+/* 営業日ナビゲーション */
+.btn-icon-nav {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  background: var(--bg2);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+  flex-shrink: 0;
+}
+
+.btn-icon-nav:hover:not(:disabled) {
+  border-color: var(--teal-border);
+}
+
+.btn-icon-nav:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.rev-today-badge {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--teal);
+  background: var(--teal-bg);
+  border: 1px solid var(--teal-border);
+  border-radius: 999px;
+  vertical-align: 1px;
+}
+
+.rev-nav-sub {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.rev-date-input {
+  max-width: 180px;
+  padding: 7px 10px;
+}
+
+.rev-guarantee-note {
+  margin: -4px 2px 12px;
+}
+
+/* 営業日の接客明細 */
+.rev-day-sessions {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  background: var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.rev-day-row {
+  display: grid;
+  grid-template-columns: 3.2em 5.5em 1fr 5em 6.5em;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--bg2);
+  font-size: 13px;
+  align-items: center;
+}
+
+.rev-day-row.is-cancelled {
+  opacity: 0.55;
+}
+
+.rev-day-time {
+  font-variant-numeric: tabular-nums;
+  color: var(--text-dim);
+}
+
+.rev-day-cast {
+  font-weight: 600;
+}
+
+.rev-day-customer {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+}
+
+.rev-day-type {
+  font-size: 12px;
+  text-align: right;
+  color: var(--text-dim);
+}
+
+.rev-day-revenue {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: var(--green);
+  font-weight: 600;
+}
+
+@media (max-width: 520px) {
+  .rev-day-row {
+    grid-template-columns: 3.2em 5em 1fr 6em;
+  }
+  .rev-day-type {
+    display: none;
+  }
 }

@@ -1,10 +1,13 @@
 import { useCallback, useEffect, useState } from 'react'
-import { db, deleteSession, getCastsAndRooms, getPricing, updateHistorySession } from '../lib/db'
-import { fmtCurrency, fmtDateTime, fmtTime } from '../lib/format'
-import { Crown, AlertTriangle, Clock } from '../icons'
+import { db, deleteSession, getCastsAndRooms, getPricing, updateHistorySession, type CustomerSummary } from '../lib/db'
+import { fmtCurrency, fmtDate, fmtDateTime, fmtTime } from '../lib/format'
+import { Crown, AlertTriangle, Clock, Plus, Minus, Sparkles } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './HistoryTab.css'
+
+// ホーム画面の「本日の接客・売上を入力」から遷移した時に追加モーダルを自動で開くフラグ
+export const OPEN_ADD_HISTORY_KEY = 'akari_open_add_history'
 
 interface HistorySession {
   session_id: string
@@ -29,7 +32,7 @@ interface EditState {
   cast_name: string
   room_name: string
   service_type: string
-  customer_names: string
+  customerNames: string[]   // 複数名対応。保存時はカンマ区切りで結合
   extend_count: number
   option_count: number
   note: string
@@ -41,11 +44,17 @@ interface AddState {
   cast_name: string
   room_name: string
   service_type: string
-  customer_names: string
+  customerNames: string[]   // 複数名対応
   datetime: string   // "YYYY-MM-DDTHH:mm"（JST）
   extend_count: number
   option_count: number
   note: string
+}
+
+// 顧客名文字列（カンマ/読点区切り）→ 入力欄配列
+function splitCustomerNames(joined: string): string[] {
+  const names = String(joined || '').split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+  return names.length ? names : ['']
 }
 
 interface PricingEntry {
@@ -77,6 +86,89 @@ function fromLocalInput(local: string): string {
   return utc.toISOString()
 }
 
+// 複数の顧客名入力欄（＋来店回数/最終対応ヒント）。追加・編集モーダルで共用
+function CustomerNamesInput({
+  names,
+  onChange,
+  summaries,
+}: {
+  names: string[]
+  onChange: (next: string[]) => void
+  summaries: Map<string, CustomerSummary>
+}) {
+  const update = (i: number, v: string) => {
+    const next = [...names]
+    next[i] = v
+    onChange(next)
+  }
+  const add = () => {
+    if (names.length < 10) onChange([...names, ''])
+  }
+  const remove = (i: number) =>
+    onChange(names.length === 1 ? [''] : names.filter((_, idx) => idx !== i))
+
+  return (
+    <div className="customer-names">
+      {names.map((n, i) => {
+        const nm = n.trim()
+        const summary = nm ? summaries.get(nm) : undefined
+        return (
+          <div key={i}>
+            <div className="customer-name-row">
+              <input
+                type="text"
+                className="form-input"
+                placeholder={i === 0 ? '顧客名' : `お連れ様 ${i + 1}`}
+                value={n}
+                onChange={(e) => update(i, e.target.value)}
+                list="history-known-customers"
+                autoComplete="off"
+              />
+              {i === names.length - 1 && names.length < 10 ? (
+                <button
+                  type="button"
+                  className="btn-cust-add"
+                  onClick={add}
+                  title="お連れ様を追加"
+                  aria-label="お連れ様を追加"
+                >
+                  <Plus size={18} />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-cust-rm"
+                  onClick={() => remove(i)}
+                  title="この欄を削除"
+                  aria-label="この欄を削除"
+                >
+                  <Minus size={18} />
+                </button>
+              )}
+            </div>
+            {summary && (
+              <p className={`res-cust-hint ${summary.visitCount > 0 ? 'is-repeat' : 'is-new'}`}>
+                {summary.visitCount > 0 ? (
+                  <>
+                    来店 <strong>{summary.visitCount}回</strong>
+                    {summary.lastVisitAt && <>（最終: {fmtDate(summary.lastVisitAt)}）</>}
+                    {summary.lastCast && <> ｜ 最終対応: {summary.lastCast}</>}
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />
+                    来店記録なし（新規のお客様）
+                  </>
+                )}
+              </p>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
 export default function HistoryTab({
   castName,
   isAdmin,
@@ -101,6 +193,10 @@ export default function HistoryTab({
   const [adding, setAdding] = useState<AddState | null>(null)
   const [deleting, setDeleting] = useState<HistorySession | null>(null)
   const [busy, setBusy] = useState(false)
+  // 顧客名 → 来店サマリー（来店回数・最終対応の表示用）。一度引いた名前はキャッシュ
+  const [custSummaries, setCustSummaries] = useState<Map<string, CustomerSummary>>(new Map())
+  // 既存顧客名（入力サジェスト用）
+  const [knownNames, setKnownNames] = useState<string[]>([])
   const toast = useToast()
 
   const load = useCallback(async () => {
@@ -130,6 +226,47 @@ export default function HistoryTab({
     })()
   }, [])
 
+  // 既存顧客名のサジェスト候補を取得
+  useEffect(() => {
+    (async () => {
+      const r = await db.call<string[]>('getKnownCustomerNames')
+      if (r.ok) setKnownNames(r.data || [])
+    })()
+  }, [])
+
+  // ホームの「本日の接客・売上を入力」から来た場合、追加モーダルを自動で開く
+  useEffect(() => {
+    try {
+      if (sessionStorage.getItem(OPEN_ADD_HISTORY_KEY)) {
+        sessionStorage.removeItem(OPEN_ADD_HISTORY_KEY)
+        openAdd()
+      }
+    } catch { /* noop */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // モーダルで入力中の顧客名の来店サマリーを取得（400ms デバウンス）
+  const namesInForm = adding?.customerNames ?? editing?.customerNames ?? []
+  useEffect(() => {
+    const names = namesInForm
+      .map((s) => s.trim())
+      .filter(Boolean)
+      .filter((n) => !custSummaries.has(n))
+    if (!names.length) return
+    const t = setTimeout(async () => {
+      const results = await Promise.all(
+        names.map((n) => db.call<CustomerSummary>('getCustomerSummary', n)),
+      )
+      setCustSummaries((prev) => {
+        const next = new Map(prev)
+        results.forEach((r, i) => { if (r.ok) next.set(names[i], r.data) })
+        return next
+      })
+    }, 400)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [JSON.stringify(namesInForm)])
+
   const filtered = castFilter === 'mine' ? list.filter((s) => s.対応者 === castName) : list
 
   function canEdit(s: HistorySession): boolean {
@@ -142,7 +279,7 @@ export default function HistoryTab({
       cast_name: s.対応者,
       room_name: s.ルーム || '',
       service_type: s.接客種別,
-      customer_names: s.顧客名,
+      customerNames: splitCustomerNames(s.顧客名),
       extend_count: s.延長回数,
       option_count: s.オプション回数,
       note: s.備考,
@@ -156,7 +293,7 @@ export default function HistoryTab({
       cast_name: castName,
       room_name: '',
       service_type: pricing[0]?.key || 'normal',
-      customer_names: '',
+      customerNames: [''],
       datetime: nowJstInput(),
       extend_count: 0,
       option_count: 0,
@@ -172,7 +309,7 @@ export default function HistoryTab({
       castName: adding.cast_name,
       room: adding.room_name || undefined,
       serviceType: adding.service_type,
-      customerNames: adding.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean),
+      customerNames: adding.customerNames.map((s) => s.trim()).filter(Boolean),
       startedAt: fromLocalInput(adding.datetime),
       extendCount: adding.extend_count,
       optionCount: adding.option_count,
@@ -197,7 +334,7 @@ export default function HistoryTab({
         cast_name: editing.cast_name,
         room_name: editing.room_name || null,
         service_type: editing.service_type,
-        customer_names: editing.customer_names,
+        customer_names: editing.customerNames.map((s) => s.trim()).filter(Boolean).join(', '),
         extend_count: editing.extend_count,
         option_count: editing.option_count,
         note: editing.note,
@@ -234,7 +371,7 @@ export default function HistoryTab({
     const optEntry = pricing.find((p) => p.key === 'option')
     const basePrice = svc?.price ?? 0
     const optPrice = optEntry?.price ?? 500000  // フォールバック
-    const custs = editing.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+    const custs = editing.customerNames.map((s) => s.trim()).filter(Boolean)
     const nCust = Math.max(1, custs.length)
     const ext = Math.max(0, editing.extend_count)
     const opt = Math.max(0, editing.option_count)
@@ -248,7 +385,7 @@ export default function HistoryTab({
     const optEntry = pricing.find((p) => p.key === 'option')
     const basePrice = svc?.price ?? 0
     const optPrice = optEntry?.price ?? 500000  // フォールバック（実際の額はサーバ側で算出）
-    const custs = adding.customer_names.split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+    const custs = adding.customerNames.map((s) => s.trim()).filter(Boolean)
     const nCust = Math.max(1, custs.length)
     const ext = Math.max(0, adding.extend_count)
     const opt = Math.max(0, adding.option_count)
@@ -257,6 +394,10 @@ export default function HistoryTab({
 
   return (
     <div className="history-tab">
+      {/* 既存顧客名のサジェスト（入力中に候補から選べる。ローマ字/かな入力の手間軽減） */}
+      <datalist id="history-known-customers">
+        {knownNames.map((n) => <option key={n} value={n} />)}
+      </datalist>
       <div className="card filter-card">
         <div className="form-row">
           <div className="form-group">
@@ -435,13 +576,11 @@ export default function HistoryTab({
             </div>
           )}
           <div className="form-group">
-            <label className="form-label">顧客名（カンマ区切りで複数）</label>
-            <input
-              type="text"
-              className="form-input"
-              value={adding.customer_names}
-              onChange={(e) => setAdding((p) => (p ? { ...p, customer_names: e.target.value } : null))}
-              placeholder="顧客名"
+            <label className="form-label">顧客名（複数名可）</label>
+            <CustomerNamesInput
+              names={adding.customerNames}
+              onChange={(next) => setAdding((p) => (p ? { ...p, customerNames: next } : null))}
+              summaries={custSummaries}
             />
           </div>
           <div className="form-group">
@@ -566,12 +705,11 @@ export default function HistoryTab({
             </div>
           )}
           <div className="form-group">
-            <label className="form-label">顧客名（カンマ区切りで複数）</label>
-            <input
-              type="text"
-              className="form-input"
-              value={editing.customer_names}
-              onChange={(e) => setEditing((p) => (p ? { ...p, customer_names: e.target.value } : null))}
+            <label className="form-label">顧客名（複数名可）</label>
+            <CustomerNamesInput
+              names={editing.customerNames}
+              onChange={(next) => setEditing((p) => (p ? { ...p, customerNames: next } : null))}
+              summaries={custSummaries}
             />
           </div>
           {!editing.cancelled && (

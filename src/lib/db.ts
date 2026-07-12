@@ -6,6 +6,7 @@
 // 認証は Supabase 側で自動的にハンドリングされる（auth.uid() が RLS で使われる）
 
 import { supabase } from './supabase'
+import { fmtBizTime, fmtDate } from './format'
 
 // ============================================================
 // 型定義（旧 AkariApi の戻り値と互換）
@@ -78,6 +79,7 @@ export interface CustomerSummary {
   visitCount: number          // 来店回数（customer_visits ベース）
   lastVisitAt: string | null  // 最終来店日時
   casts: string[]             // 担当したことのあるキャスト
+  lastCast: string | null     // 最終対応キャスト（最新の来店の担当）
   cancelledResCount: number   // 予約キャンセル済みの回数
 }
 
@@ -90,7 +92,7 @@ export interface FinishBreakdown {
   optionCount: number
 }
 
-export type ActivityType = 'start' | 'end' | 'extend' | 'option'
+export type ActivityType = 'start' | 'end' | 'extend' | 'option' | 'record'
 
 export interface ActivityLog {
   id: string
@@ -109,13 +111,26 @@ export interface CastRevenue {
   revenue: number
   salary: number
   cashFlow: number
+  count: number          // 接客件数（キャンセル除く）
+}
+
+// 売上タブの営業日明細（1接客 = 1行）
+export interface RevenueSessionRow {
+  session_id: string
+  cast: string
+  customer: string
+  serviceLabel: string
+  revenue: number
+  started_at: string
+  cancelled: boolean
 }
 
 export interface RevenueStatus {
   casts: CastRevenue[]
-  totals: { revenue: number; salary: number; cashFlow: number }
+  totals: { revenue: number; salary: number; cashFlow: number; count: number }
   businessDay: string
   busStart: string
+  sessions: RevenueSessionRow[]
 }
 
 interface SessionRow {
@@ -630,6 +645,57 @@ export async function finishSession(payload: {
 // API: 予約 CRUD
 // ============================================================
 
+// 予約の時間帯重複チェック。
+// - 同じキャストの予約と時間帯が重なる → エラー
+// - 同じ顧客（カンマ区切りのいずれかが一致）の予約と時間帯が重なる → エラー
+// キャンセル済み・接客開始済み(converted)の予約は対象外。
+async function assertNoReservationConflict(params: {
+  castId: string
+  customerName: string
+  startIso: string
+  durationMin: number
+  excludeId?: string
+}): Promise<void> {
+  const startMs = new Date(params.startIso).getTime()
+  if (isNaN(startMs)) return
+  const endMs = startMs + Math.max(30, params.durationMin) * 60 * 1000
+  // 前後24時間の予約だけ見れば重複判定には十分
+  const fromIso = new Date(startMs - 24 * 3600 * 1000).toISOString()
+  const toIso = new Date(startMs + 24 * 3600 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, cast_id, customer_name, reserved_at, duration_min, cancelled, converted_at, cast:casts(name)')
+    .gte('reserved_at', fromIso)
+    .lte('reserved_at', toIso)
+  if (error) throw error
+
+  const norm = (s: string) => s.trim().toLowerCase()
+  const myNames = String(params.customerName || '').split(/[,、]/).map(norm).filter(Boolean)
+
+  for (const r of data || []) {
+    if (params.excludeId && r.id === params.excludeId) continue
+    if (r.cancelled || r.converted_at) continue
+    const rs = new Date(r.reserved_at).getTime()
+    if (isNaN(rs)) continue
+    const re = rs + (Number(r.duration_min) || 60) * 60 * 1000
+    if (!(rs < endMs && startMs < re)) continue  // 重なっていない
+
+    const castLabel = (r.cast as { name?: string } | null)?.name || 'キャスト'
+    const range = `${fmtDate(r.reserved_at)} ${fmtBizTime(rs)}〜${fmtBizTime(re)}`
+    if (r.cast_id === params.castId) {
+      throw new Error(
+        `予約時間が重複しています: ${castLabel} は ${range} に「${r.customer_name || '（顧客未指定）'}」の予約があります`,
+      )
+    }
+    const otherNames = String(r.customer_name || '').split(/[,、]/).map(norm).filter(Boolean)
+    if (myNames.some((n) => otherNames.includes(n))) {
+      throw new Error(
+        `このお客様は同じ時間帯に別の予約があります（${castLabel} / ${range}）`,
+      )
+    }
+  }
+}
+
 export async function addReservation(payload: {
   castName: string
   customerName?: string
@@ -642,6 +708,15 @@ export async function addReservation(payload: {
 }): Promise<ReservationShape> {
   const cId = await castIdByName(payload.castName)
   const rId = payload.room ? await roomIdByName(payload.room) : null
+  // キャンセル記録として登録する場合は重複チェック不要
+  if (!payload.cancelled) {
+    await assertNoReservationConflict({
+      castId: cId,
+      customerName: payload.customerName || '',
+      startIso: new Date(payload.datetime).toISOString(),
+      durationMin: Number(payload.durationMin) || 60,
+    })
+  }
   const { data, error } = await supabase
     .from('reservations')
     .insert({
@@ -695,6 +770,25 @@ export async function updateReservation(payload: {
   if (payload.reservationPrice !== undefined) updates.reservation_price = Number(payload.reservationPrice) || 0
   if (payload.durationMin !== undefined) updates.duration_min = Math.max(30, Number(payload.durationMin) || 60)
   if (payload.cancelled !== undefined) updates.cancelled = !!payload.cancelled
+
+  // 更新後の値で時間帯重複をチェック（キャンセル済みにする更新はスキップ）
+  const { data: cur, error: curErr } = await supabase
+    .from('reservations')
+    .select('cast_id, customer_name, reserved_at, duration_min, cancelled')
+    .eq('id', payload.reservationId)
+    .single()
+  if (curErr) throw curErr
+  const nextCancelled = payload.cancelled !== undefined ? !!payload.cancelled : !!cur.cancelled
+  if (!nextCancelled) {
+    await assertNoReservationConflict({
+      castId: (updates.cast_id as string | undefined) ?? cur.cast_id,
+      customerName: (updates.customer_name as string | undefined) ?? cur.customer_name ?? '',
+      startIso: (updates.reserved_at as string | undefined) ?? cur.reserved_at,
+      durationMin: Number((updates.duration_min as number | undefined) ?? cur.duration_min) || 60,
+      excludeId: payload.reservationId,
+    })
+  }
+
   const { error } = await supabase.from('reservations').update(updates).eq('id', payload.reservationId)
   if (error) throw error
 }
@@ -707,7 +801,7 @@ export async function deleteReservation(reservationId: string): Promise<void> {
 // 予約フォームで顧客名を入力した時に出す来店サマリー（リピート判定用）
 export async function getCustomerSummary(customerName: string): Promise<CustomerSummary> {
   const name = String(customerName || '').trim()
-  if (!name) return { visitCount: 0, lastVisitAt: null, casts: [], cancelledResCount: 0 }
+  if (!name) return { visitCount: 0, lastVisitAt: null, casts: [], lastCast: null, cancelledResCount: 0 }
 
   // ilike のワイルドカードをエスケープ（予約側は複数名がカンマ区切りで入るため部分一致で探す）
   const escaped = name.replace(/[%_]/g, (m) => `\\${m}`)
@@ -737,8 +831,30 @@ export async function getCustomerSummary(customerName: string): Promise<Customer
     visitCount: visits.length,
     lastVisitAt: visits[0]?.visited_at || null,
     casts,
+    // visits は降順ソート済みなので先頭の担当キャストが「最終対応」
+    lastCast: casts[0] || null,
     cancelledResCount: cancelledRes.count || 0,
   }
+}
+
+// 既存顧客名の一覧（履歴/予約フォームの入力サジェスト用、来店が新しい順）
+export async function getKnownCustomerNames(): Promise<string[]> {
+  const { data, error } = await supabase
+    .from('customer_visits')
+    .select('customer_name, visited_at')
+    .order('visited_at', { ascending: false })
+    .limit(1000)
+  if (error) throw error
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const r of data || []) {
+    const n = String(r.customer_name || '').trim()
+    if (n && !seen.has(n)) {
+      seen.add(n)
+      out.push(n)
+    }
+  }
+  return out
 }
 
 // ============================================================
@@ -770,9 +886,14 @@ export async function removeFromBlacklist(name: string): Promise<void> {
 // API: 売上集計
 // ============================================================
 
-// 営業日 (JST 4:00 開始) を計算
-function getBusinessDayStart(): Date {
+// 営業日 (JST 4:00 開始) を計算。
+// businessDay ("YYYY-MM-DD") を指定するとその日の営業日開始（当日 4:00 JST）を返す。
+function getBusinessDayStart(businessDay?: string): Date {
   const JST_OFFSET = 9 * 60 * 60 * 1000
+  if (businessDay) {
+    const [y, m, d] = businessDay.split('-').map(Number)
+    return new Date(Date.UTC(y, m - 1, d, 4) - JST_OFFSET)
+  }
   const now = Date.now()
   const jst = new Date(now + JST_OFFSET)
   const day = jst.getUTCDate()
@@ -790,22 +911,41 @@ function getBusinessDayLabel(busStart: Date): string {
   return `${jst.getUTCFullYear()}/${String(jst.getUTCMonth() + 1).padStart(2, '0')}/${String(jst.getUTCDate()).padStart(2, '0')} 営業日`
 }
 
-export async function getRevenueStatus(): Promise<RevenueStatus> {
-  const GUARANTEE = 500000
-  const busStart = getBusinessDayStart()
+// params.businessDay ("YYYY-MM-DD") で過去の営業日も参照可能。省略時は今営業日。
+// ※待機保証は 2026-07 の運用変更でカウント0（給与 = 席料の50% + オプション全額）
+export async function getRevenueStatus(params?: { businessDay?: string }): Promise<RevenueStatus> {
+  const GUARANTEE = 0
+  const pricing = await loadPricing()
+  const busStart = getBusinessDayStart(params?.businessDay)
+  const busEnd = new Date(busStart.getTime() + 24 * 60 * 60 * 1000)
+  // 営業日の判定は started_at（接客した日時）基準。
+  // created_at 基準だと、後から手入力した過去分が「入力した日」に計上されてしまう
   const { data, error } = await supabase
     .from('sessions')
-    .select('base_price, option_price, extend_count, option_count, customer_count, cast:casts(name)')
+    .select('id, base_price, option_price, extend_count, option_count, customer_count, customer_names, service_type, revenue, started_at, cancelled, cast:casts(name)')
     .eq('finished', true)
-    .gte('created_at', busStart.toISOString())
+    .gte('started_at', busStart.toISOString())
+    .lt('started_at', busEnd.toISOString())
+    .order('started_at', { ascending: true })
   if (error) throw error
 
-  const castMap = new Map<string, { baseTotal: number; optTotal: number }>()
+  const castMap = new Map<string, { baseTotal: number; optTotal: number; count: number }>()
+  const sessions: RevenueSessionRow[] = []
   for (const r of data || []) {
     const cast = (r.cast as { name?: string } | null)?.name
     if (!cast) continue
-    if (!castMap.has(cast)) castMap.set(cast, { baseTotal: 0, optTotal: 0 })
+    sessions.push({
+      session_id: r.id,
+      cast,
+      customer: r.customer_names || '',
+      serviceLabel: r.cancelled ? 'キャンセル' : pricing.get(r.service_type)?.label || r.service_type,
+      revenue: Number(r.revenue) || 0,
+      started_at: r.started_at,
+      cancelled: !!r.cancelled,
+    })
+    if (!castMap.has(cast)) castMap.set(cast, { baseTotal: 0, optTotal: 0, count: 0 })
     const m = castMap.get(cast)!
+    if (r.cancelled) continue  // キャンセルは金額・件数ともカウントしない
     const base = Number(r.base_price) || 0
     const optPr = Number(r.option_price) || 0
     const ext = Number(r.extend_count) || 0
@@ -813,6 +953,7 @@ export async function getRevenueStatus(): Promise<RevenueStatus> {
     const nCust = Math.max(1, Number(r.customer_count) || 1)
     m.baseTotal += base * nCust * (1 + ext)
     m.optTotal += optPr * optCnt
+    m.count += 1
   }
 
   const casts: CastRevenue[] = [...castMap.entries()].map(([name, d]) => {
@@ -826,6 +967,7 @@ export async function getRevenueStatus(): Promise<RevenueStatus> {
       revenue,
       salary,
       cashFlow: revenue - salary,
+      count: d.count,
     }
   }).sort((a, b) => a.cast.localeCompare(b.cast, 'ja'))
 
@@ -834,9 +976,10 @@ export async function getRevenueStatus(): Promise<RevenueStatus> {
       acc.revenue += c.revenue
       acc.salary += c.salary
       acc.cashFlow += c.cashFlow
+      acc.count += c.count
       return acc
     },
-    { revenue: 0, salary: 0, cashFlow: 0 },
+    { revenue: 0, salary: 0, cashFlow: 0, count: 0 },
   )
 
   return {
@@ -844,6 +987,7 @@ export async function getRevenueStatus(): Promise<RevenueStatus> {
     totals,
     businessDay: getBusinessDayLabel(busStart),
     busStart: busStart.toISOString(),
+    sessions,
   }
 }
 
@@ -1122,7 +1266,7 @@ export async function getInsights(): Promise<InsightsData> {
   const rows = data || []
 
   // ====== 週次集計 ======
-  const GUARANTEE = 500000
+  const GUARANTEE = 0  // 待機保証はカウント0（売上タブと同じ運用）
   const weekMap = new Map<string, WeeklyInsight>()
   for (const r of rows) {
     const wk = getWeekKeyFromIso(r.created_at)
@@ -1453,6 +1597,10 @@ export async function addHistorySession(payload: {
       })),
     )
   }
+  // 手動追加もホームの「最近のアクティビティ」に反映する
+  if (!payload.cancelled) {
+    await logActivity('record', payload.castName, data.id, joined || null, cId)
+  }
   return sessionRowToShape(data as unknown as SessionRow, pricing)
 }
 
@@ -1615,6 +1763,7 @@ const _dispatch: Record<string, (...args: any[]) => Promise<unknown>> = {
   updateReservation,
   deleteReservation,
   getCustomerSummary,
+  getKnownCustomerNames,
   addHistorySession,
   addToBlacklist,
   removeFromBlacklist,

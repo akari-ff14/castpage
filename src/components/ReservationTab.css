@@ -216,6 +216,80 @@
   color: var(--gold);
 }
 
+/* 「今すぐOK」表示（空きキャスト） */
+.avail-time.avail-free {
+  color: var(--green, #3fb950);
+  font-size: 14px;
+}
+
+/* モーダル内: 各キャストの次の予約可能時間 */
+.res-modal-avail {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.res-modal-avail-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--teal);
+  margin-bottom: 8px;
+}
+
+.res-modal-avail-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.res-modal-avail-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.res-modal-avail-chip:hover {
+  border-color: var(--teal-border);
+}
+
+.res-modal-avail-chip.active {
+  background: var(--teal-bg);
+  border-color: var(--teal);
+}
+
+.res-modal-avail-chip .chip-cast {
+  font-weight: 700;
+}
+
+.res-modal-avail-chip .chip-time {
+  color: var(--teal);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.res-modal-avail-chip .chip-time.free {
+  color: var(--green, #3fb950);
+}
+
+/* 顧客名入力時の出禁（ブラックリスト）警告 */
+.res-bl-hint {
+  margin: 4px 2px 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--red);
+  font-weight: 600;
+}
+
 /* 現在時刻を入力ボタン */
 .btn-now {
   display: inline-flex;

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { db, type ActivityLog, type ActivityType } from '../lib/db'
 import { useRealtimeActivityLogs } from '../lib/useRealtimeSessions'
 import { fmtTime } from '../lib/format'
-import { Play, Stop, RotateCw, Sparkles } from '../icons'
+import { Play, Stop, RotateCw, Sparkles, Edit } from '../icons'
 import './ActivityFeed.css'
 
 interface Props {
@@ -26,6 +26,7 @@ function messageOf(log: ActivityLog): string {
     case 'end':    return `${who} が ${target} の対応を終了しました`
     case 'extend': return `${who} が ${target} の対応を延長しました`
     case 'option': return `${who} が ${target} のオプションを受け付けました`
+    case 'record': return `${who} が ${target} の接客を記録しました`
   }
 }
 
@@ -35,6 +36,7 @@ function iconOf(type: ActivityType) {
     case 'end':    return <Stop size={12} />
     case 'extend': return <RotateCw size={12} />
     case 'option': return <Sparkles size={12} />
+    case 'record': return <Edit size={12} />
   }
 }
 
