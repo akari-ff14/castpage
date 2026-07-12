@@ -160,20 +160,24 @@ interface SessionRow {
 // マスタ参照キャッシュ（cast/room の name↔id 変換）
 // ============================================================
 
-let _castsCache: Array<{ id: string; name: string }> | null = null
+let _castsCache: Array<{ id: string; name: string; guarantee_amount: number }> | null = null
 let _roomsCache: Array<{ id: string; name: string; vip: boolean }> | null = null
 let _pricingCache: Map<string, PricingEntry> | null = null
 
 async function loadCasts() {
   if (_castsCache) return _castsCache
-  // casts_public ビュー経由 (invite_code を除外、RLS バイパスして全 authenticated に id/name を露出)
+  // casts_public ビュー経由 (invite_code を除外、RLS バイパスして全 authenticated に露出)
   const { data, error } = await supabase
     .from('casts_public')
-    .select('id, name')
+    .select('id, name, guarantee_amount')
     .eq('active', true)
     .order('name')
   if (error) throw error
-  _castsCache = data || []
+  _castsCache = (data || []).map((c) => ({
+    id: c.id,
+    name: c.name,
+    guarantee_amount: Number(c.guarantee_amount) || 0,
+  }))
   return _castsCache
 }
 
@@ -912,10 +916,12 @@ function getBusinessDayLabel(busStart: Date): string {
 }
 
 // params.businessDay ("YYYY-MM-DD") で過去の営業日も参照可能。省略時は今営業日。
-// ※待機保証は 2026-07 の運用変更でカウント0（給与 = 席料の50% + オプション全額）
+// 待機保証はキャストごとの設定 (casts.guarantee_amount、既定0)。
+// その営業日に1件でも記録があるキャストにのみ加算する（給与 = 待機保証 + 席料50% + オプション全額）
 export async function getRevenueStatus(params?: { businessDay?: string }): Promise<RevenueStatus> {
-  const GUARANTEE = 0
   const pricing = await loadPricing()
+  const castsMaster = await loadCasts()
+  const guaranteeByName = new Map(castsMaster.map((c) => [c.name, c.guarantee_amount]))
   const busStart = getBusinessDayStart(params?.businessDay)
   const busEnd = new Date(busStart.getTime() + 24 * 60 * 60 * 1000)
   // 営業日の判定は started_at（接客した日時）基準。
@@ -957,11 +963,12 @@ export async function getRevenueStatus(params?: { businessDay?: string }): Promi
   }
 
   const casts: CastRevenue[] = [...castMap.entries()].map(([name, d]) => {
+    const guarantee = guaranteeByName.get(name) ?? 0
     const revenue = d.baseTotal + d.optTotal
-    const salary = GUARANTEE + d.baseTotal * 0.5 + d.optTotal
+    const salary = guarantee + d.baseTotal * 0.5 + d.optTotal
     return {
       cast: name,
-      guarantee: GUARANTEE,
+      guarantee,
       baseTotal: d.baseTotal,
       optTotal: d.optTotal,
       revenue,
@@ -1251,13 +1258,22 @@ function getWeekKeyFromIso(iso: string): { key: string; label: string } | null {
   }
 }
 
+// 営業日 (JST 4:00 区切り) の "YYYY-MM-DD"
+function bizDateOfIso(iso: string): string {
+  const d = new Date(iso)
+  if (isNaN(d.getTime())) return ''
+  return new Date(d.getTime() + 9 * 3600000 - 4 * 3600000).toISOString().slice(0, 10)
+}
+
 export async function getInsights(): Promise<InsightsData> {
   const pricing = await loadPricing()
+  const castsMaster = await loadCasts()
+  const guaranteeByName = new Map(castsMaster.map((c) => [c.name, c.guarantee_amount]))
 
   // 完了済セッションを取得
   const { data, error } = await supabase
     .from('sessions')
-    .select('service_type, base_price, option_price, extend_count, option_count, customer_count, revenue, started_at, created_at, room:rooms(name), customer_names')
+    .select('service_type, base_price, option_price, extend_count, option_count, customer_count, revenue, started_at, created_at, room:rooms(name), cast:casts(name), customer_names')
     .eq('finished', true)
     .order('created_at', { ascending: false })
     .limit(2000)
@@ -1266,7 +1282,8 @@ export async function getInsights(): Promise<InsightsData> {
   const rows = data || []
 
   // ====== 週次集計 ======
-  const GUARANTEE = 0  // 待機保証はカウント0（売上タブと同じ運用）
+  // 待機保証はキャストごとの設定額を「キャスト×営業日」につき1回だけ加算する
+  const guaranteeSeen = new Set<string>()
   const weekMap = new Map<string, WeeklyInsight>()
   for (const r of rows) {
     const wk = getWeekKeyFromIso(r.created_at)
@@ -1292,7 +1309,16 @@ export async function getInsights(): Promise<InsightsData> {
     const numCust = Math.max(1, Number(r.customer_count) || 1)
     const baseTotal = base * numCust * (1 + ext)
     const optTotal = optPrice * optCnt
-    const salary = GUARANTEE + baseTotal * 0.5 + optTotal
+    let guarantee = 0
+    const castName = (r.cast as { name?: string } | null)?.name || ''
+    if (castName) {
+      const gKey = `${castName}|${bizDateOfIso(r.started_at)}`
+      if (!guaranteeSeen.has(gKey)) {
+        guaranteeSeen.add(gKey)
+        guarantee = guaranteeByName.get(castName) ?? 0
+      }
+    }
+    const salary = guarantee + baseTotal * 0.5 + optTotal
     w.revenue += revenue
     w.salary += salary
     w.cashFlow += revenue - salary
@@ -1401,12 +1427,13 @@ export interface CastAdminRow {
   active: boolean
   note: string
   invite_code: string | null  // 未紐付キャストのみ値あり、紐付け済は NULL
+  guarantee_amount: number    // 待機保証額（0 = なし）
 }
 
 export async function listAllCasts(): Promise<CastAdminRow[]> {
   const { data, error } = await supabase
     .from('casts')
-    .select('id, name, user_id, is_admin, active, note, invite_code')
+    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount')
     .order('active', { ascending: false })
     .order('name')
   if (error) throw error
@@ -1420,21 +1447,23 @@ export async function listAllCasts(): Promise<CastAdminRow[]> {
     active: !!c.active,
     note: c.note || '',
     invite_code: c.invite_code ?? null,
+    guarantee_amount: Number(c.guarantee_amount) || 0,
   }))
 }
 
-export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string }): Promise<void> {
+export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string; guarantee_amount?: number }): Promise<void> {
   const { error } = await supabase.from('casts').insert({
     name: payload.name,
     is_admin: !!payload.is_admin,
     active: payload.active !== false,
     note: payload.note || '',
+    guarantee_amount: Math.max(0, Number(payload.guarantee_amount) || 0),
   })
   if (error) throw error
   invalidateCaches()
 }
 
-export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null }>): Promise<void> {
+export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null; guarantee_amount: number }>): Promise<void> {
   const { error } = await supabase.from('casts').update(fields).eq('id', id)
   if (error) throw error
   invalidateCaches()

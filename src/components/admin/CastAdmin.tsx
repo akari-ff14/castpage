@@ -7,6 +7,7 @@ import {
   updateCast,
   type CastAdminRow,
 } from '../../lib/db'
+import { fmtCurrency } from '../../lib/format'
 import Modal from '../Modal'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
@@ -17,9 +18,10 @@ interface FormState {
   is_admin: boolean
   active: boolean
   note: string
+  guarantee_amount: number  // 待機保証額（0 = なし）
 }
 
-const emptyForm = (): FormState => ({ name: '', is_admin: false, active: true, note: '' })
+const emptyForm = (): FormState => ({ name: '', is_admin: false, active: true, note: '', guarantee_amount: 0 })
 
 export default function CastAdmin() {
   const [list, setList] = useState<CastAdminRow[]>([])
@@ -52,7 +54,14 @@ export default function CastAdmin() {
   }
 
   function openEdit(c: CastAdminRow) {
-    setForm({ id: c.id, name: c.name, is_admin: c.is_admin, active: c.active, note: c.note })
+    setForm({
+      id: c.id,
+      name: c.name,
+      is_admin: c.is_admin,
+      active: c.active,
+      note: c.note,
+      guarantee_amount: c.guarantee_amount,
+    })
     setFormOpen(true)
   }
 
@@ -69,6 +78,7 @@ export default function CastAdmin() {
           is_admin: form.is_admin,
           active: form.active,
           note: form.note,
+          guarantee_amount: Math.max(0, Number(form.guarantee_amount) || 0),
         })
         toast.show('キャストを更新しました')
       } else {
@@ -77,6 +87,7 @@ export default function CastAdmin() {
           is_admin: form.is_admin,
           active: form.active,
           note: form.note,
+          guarantee_amount: Math.max(0, Number(form.guarantee_amount) || 0),
         })
         toast.show('キャストを追加しました（招待コードは一覧で確認）')
       }
@@ -156,6 +167,11 @@ export default function CastAdmin() {
                 </button>
               </div>
             )}
+            <div className="admin-card-meta">
+              待機保証: {c.guarantee_amount > 0
+                ? <span className="c-gold">{fmtCurrency(c.guarantee_amount)}</span>
+                : <span className="muted">なし</span>}
+            </div>
             {c.note && <div className="admin-card-meta">{c.note}</div>}
           </div>
           <div className="admin-card-actions">
@@ -191,6 +207,24 @@ export default function CastAdmin() {
               value={form.note}
               onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
             />
+          </div>
+          <div className="form-group">
+            <label className="form-label">待機保証（円 / 営業日）</label>
+            <input
+              type="number"
+              className="form-input"
+              min="0"
+              step="10000"
+              value={form.guarantee_amount}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, guarantee_amount: Math.max(0, Number(e.target.value) || 0) }))
+              }
+              placeholder="0 = 保証なし"
+            />
+            <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
+              0 で保証なし（例: 500000）。その営業日に1件でも記録があると給与に加算されます。
+              給与 = 待機保証 + 席料50% + オプション全額
+            </p>
           </div>
           <label className="checkbox-row">
             <input

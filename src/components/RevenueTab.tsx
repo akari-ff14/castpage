@@ -104,7 +104,7 @@ export default function RevenueTab() {
         </div>
       </div>
       <p className="muted small rev-guarantee-note">
-        ※待機保証はカウント0（給与 = 席料の50% + オプション全額）
+        ※給与 = 待機保証 + 席料50% + オプション全額（待機保証はキャストごとに管理→キャストで設定。既定は0）
       </p>
 
       {data.casts.length === 0 ? (
