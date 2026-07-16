@@ -653,8 +653,9 @@ export async function finishSession(payload: {
 // - 同じキャストの予約と時間帯が重なる → エラー
 // - 同じ顧客（カンマ区切りのいずれかが一致）の予約と時間帯が重なる → エラー
 // キャンセル済み・接客開始済み(converted)の予約は対象外。
+// castId が null（フリー＝指名なし）の場合、キャスト重複チェックは行わない（顧客重複のみ）。
 async function assertNoReservationConflict(params: {
-  castId: string
+  castId: string | null
   customerName: string
   startIso: string
   durationMin: number
@@ -686,7 +687,7 @@ async function assertNoReservationConflict(params: {
 
     const castLabel = (r.cast as { name?: string } | null)?.name || 'キャスト'
     const range = `${fmtDate(r.reserved_at)} ${fmtBizTime(rs)}〜${fmtBizTime(re)}`
-    if (r.cast_id === params.castId) {
+    if (params.castId && r.cast_id === params.castId) {
       throw new Error(
         `予約時間が重複しています: ${castLabel} は ${range} に「${r.customer_name || '（顧客未指定）'}」の予約があります`,
       )
@@ -710,7 +711,8 @@ export async function addReservation(payload: {
   durationMin?: number
   cancelled?: boolean
 }): Promise<ReservationShape> {
-  const cId = await castIdByName(payload.castName)
+  // castName 空 = フリー（指名なし）予約。cast_id は NULL で登録する
+  const cId = payload.castName ? await castIdByName(payload.castName) : null
   const rId = payload.room ? await roomIdByName(payload.room) : null
   // キャンセル記録として登録する場合は重複チェック不要
   if (!payload.cancelled) {
@@ -766,7 +768,7 @@ export async function updateReservation(payload: {
   cancelled?: boolean
 }): Promise<void> {
   const updates: Record<string, unknown> = {}
-  if (payload.castName !== undefined) updates.cast_id = await castIdByName(payload.castName)
+  if (payload.castName !== undefined) updates.cast_id = payload.castName ? await castIdByName(payload.castName) : null
   if (payload.customerName !== undefined) updates.customer_name = payload.customerName
   if (payload.datetime !== undefined) updates.reserved_at = new Date(payload.datetime).toISOString()
   if (payload.room !== undefined) updates.room_id = payload.room ? await roomIdByName(payload.room) : null
@@ -785,7 +787,8 @@ export async function updateReservation(payload: {
   const nextCancelled = payload.cancelled !== undefined ? !!payload.cancelled : !!cur.cancelled
   if (!nextCancelled) {
     await assertNoReservationConflict({
-      castId: (updates.cast_id as string | undefined) ?? cur.cast_id,
+      // フリーへの変更（cast_id: null）を ?? で潰さないよう、castName 指定の有無で分岐
+      castId: payload.castName !== undefined ? (updates.cast_id as string | null) : cur.cast_id,
       customerName: (updates.customer_name as string | undefined) ?? cur.customer_name ?? '',
       startIso: (updates.reserved_at as string | undefined) ?? cur.reserved_at,
       durationMin: Number((updates.duration_min as number | undefined) ?? cur.duration_min) || 60,

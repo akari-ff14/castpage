@@ -38,6 +38,7 @@ const WINDOW_MS = WINDOW_HOURS * 60 * 60 * 1000
 const GRID_STEP_MIN = 30           // 目盛り（グリッド線）は30分刻み
 const RESERVATION_DEFAULT_MIN = 60 // 対応時間が無い場合の仮の枠
 const INTERVAL_MIN = 10            // 対応終了後のインターバル（次の対応可能まで）
+const FREE_ROW = 'フリー'          // キャスト未指定（指名なし）予約をまとめる行ラベル
 
 // offsetDays 日ぶんずらした「営業日」の開始時刻（その日の 21:00 JST）を UTC で返す
 function businessDayStart(offsetDays: number): Date {
@@ -93,7 +94,7 @@ export default function GanttTimeline({
   const rows = useMemo<Row[]>(() => {
     const map = new Map<string, Bar[]>()
     const ensure = (cast: string) => {
-      const key = cast || '（未割当）'
+      const key = cast || FREE_ROW
       if (!map.has(key)) map.set(key, [])
       return map.get(key)!
     }
@@ -113,7 +114,7 @@ export default function GanttTimeline({
       const startMs = new Date(s.開始時間).getTime()
       const endMs = new Date(s.対応終了時間).getTime()
       if (isNaN(startMs) || isNaN(endMs)) continue
-      const key = s.対応者 || '（未割当）'
+      const key = s.対応者 || FREE_ROW
       if (!sessionRanges.has(key)) sessionRanges.set(key, [])
       sessionRanges.get(key)!.push({ start: startMs, end: endMs })
       const c = clampBar(startMs, endMs)
@@ -154,7 +155,7 @@ export default function GanttTimeline({
       if (isNaN(startMs)) continue
       const endMs = startMs + (Number(r.予約時間) || RESERVATION_DEFAULT_MIN) * 60 * 1000
       // 同じキャストの対応中バーと時間が被る予約は、対応中の表示を優先して消す
-      const ranges = sessionRanges.get(r.キャスト名 || '（未割当）')
+      const ranges = sessionRanges.get(r.キャスト名 || FREE_ROW)
       if (ranges?.some((sr) => sr.start < endMs && sr.end > startMs)) continue
       const c = clampBar(startMs, endMs)
       if (c) {
@@ -190,8 +191,10 @@ export default function GanttTimeline({
       cast,
       bars: bars.sort((a, b) => a.startMs - b.startMs),
     }))
-    // 自分を先頭、その後は名前順
+    // 自分を先頭、フリー（指名なし）は最後、その他は名前順
     list.sort((a, b) => {
+      if (a.cast === FREE_ROW && b.cast !== FREE_ROW) return 1
+      if (b.cast === FREE_ROW && a.cast !== FREE_ROW) return -1
       if (highlightCast) {
         if (a.cast === highlightCast) return -1
         if (b.cast === highlightCast) return 1

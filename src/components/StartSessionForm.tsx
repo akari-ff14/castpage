@@ -65,6 +65,8 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
   const [presetSlots, setPresetSlots] = useState(0)
   const [busy, setBusy] = useState(false)
   const [blWarning, setBlWarning] = useState<BlMatch[] | null>(null)
+  // 既存顧客名（入力サジェスト用。ローマ字/かな入力の手間軽減）
+  const [knownNames, setKnownNames] = useState<string[]>([])
   const toast = useToast()
 
   // 全キャストの進行中セッションをリアルタイム購読
@@ -84,12 +86,14 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
 
   useEffect(() => {
     (async () => {
-      const [rRoom, rPrice] = await Promise.all([
+      const [rRoom, rPrice, rNames] = await Promise.all([
         db.call<{ casts: string[]; rooms: string[]; roomsData: RoomData[] }>('getCastsAndRooms'),
         db.call<PricingEntry[]>('getPricing'),
+        db.call<string[]>('getKnownCustomerNames'),
       ])
       if (rRoom.ok && rRoom.data.roomsData) setRooms(rRoom.data.roomsData)
       if (rPrice.ok) setPricing(rPrice.data)
+      if (rNames.ok) setKnownNames(rNames.data || [])
     })()
   }, [])
 
@@ -202,6 +206,10 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
 
   return (
     <div className="start-form">
+      {/* 既存顧客名のサジェスト（入力中に候補から選べる。ローマ字/かな入力の手間軽減） */}
+      <datalist id="session-known-customers">
+        {knownNames.map((n) => <option key={n} value={n} />)}
+      </datalist>
       {/* 現在使用中（リアルタイム反映、密表示） */}
       {activeSessions.length > 0 && (
         <div className="card room-usage-card">
@@ -239,6 +247,7 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
                 value={n}
                 onChange={(e) => updateCustName(i, e.target.value)}
                 autoComplete="off"
+                list="session-known-customers"
               />
               {i === customerNames.length - 1 && customerNames.length < 10 ? (
                 <button

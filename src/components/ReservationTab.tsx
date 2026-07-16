@@ -174,6 +174,8 @@ export default function ReservationTab({
   const [blMatches, setBlMatches] = useState<Map<string, BlMatch[]>>(new Map())
   // 保存時に BL 該当があった場合の確認モーダル
   const [blConfirm, setBlConfirm] = useState<BlMatch[] | null>(null)
+  // 既存顧客名（入力サジェスト用。ローマ字/かな入力の手間軽減）
+  const [knownNames, setKnownNames] = useState<string[]>([])
   const toast = useToast()
 
   // フォームを開いている間、入力内容を下書きとして保持
@@ -281,12 +283,14 @@ export default function ReservationTab({
 
   useEffect(() => {
     (async () => {
-      const [rCast, rPrice] = await Promise.all([
+      const [rCast, rPrice, rNames] = await Promise.all([
         db.call<{ casts: string[]; rooms: string[] }>('getCastsAndRooms'),
         db.call<PricingEntry[]>('getPricing'),
+        db.call<string[]>('getKnownCustomerNames'),
       ])
       if (rCast.ok) { setCasts(rCast.data.casts); setRooms(rCast.data.rooms) }
       if (rPrice.ok) setPricing(rPrice.data)
+      if (rNames.ok) setKnownNames(rNames.data || [])
     })()
   }, [])
 
@@ -360,8 +364,8 @@ export default function ReservationTab({
     setForm((f) => ({ ...f, datetime: date || time ? `${date}T${time}` : '' }))
 
   // 保存前チェック（出禁照合）。該当があれば確認モーダルを出して止める
+  // ※キャストは空 = フリー（指名なし）を許容する（キャンセル記録などキャスト未定の予約用）
   async function save() {
-    if (!form.castName) { toast.show('キャスト名が必要です', 'err'); return }
     const [dPart, tPart] = form.datetime.split('T')
     if (!dPart) { toast.show('予約日が必要です', 'err'); return }
     if (!tPart) { toast.show('予約時刻が必要です', 'err'); return }
@@ -435,6 +439,10 @@ export default function ReservationTab({
 
   return (
     <div className="reservation-tab">
+      {/* 既存顧客名のサジェスト（入力中に候補から選べる。ローマ字/かな入力の手間軽減） */}
+      <datalist id="res-known-customers">
+        {knownNames.map((n) => <option key={n} value={n} />)}
+      </datalist>
       <div className="card filter-card">
         <div className="filter-actions">
           <button
@@ -503,7 +511,7 @@ export default function ReservationTab({
           <div className="res-body">
             <div className="res-row">
               <span className="muted">キャスト</span>
-              <span>{r.キャスト名}</span>
+              <span>{r.キャスト名 || 'フリー（指名なし）'}</span>
             </div>
             <div className="res-row">
               <span className="muted">顧客</span>
@@ -575,6 +583,7 @@ export default function ReservationTab({
                   value={form.castName}
                   onChange={(e) => setForm((f) => ({ ...f, castName: e.target.value }))}
                 >
+                  <option value="">フリー（指名なし）</option>
                   {casts.map((c) => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
@@ -634,6 +643,7 @@ export default function ReservationTab({
                         value={n}
                         onChange={(e) => updateCustName(i, e.target.value)}
                         autoComplete="off"
+                        list="res-known-customers"
                       />
                       {i === form.customerNames.length - 1 && form.customerNames.length < 10 ? (
                         <button
@@ -820,7 +830,7 @@ export default function ReservationTab({
       {deleting && (
         <Modal onClose={() => !busy && setDeleting(null)}>
           <h3>予約を削除しますか？</h3>
-          <p className="muted">{deleting.キャスト名} / {deleting.顧客名 || '（顧客名なし）'} / {fmtDateTime(deleting.予約日時)}</p>
+          <p className="muted">{deleting.キャスト名 || 'フリー（指名なし）'} / {deleting.顧客名 || '（顧客名なし）'} / {fmtDateTime(deleting.予約日時)}</p>
           <p className="muted">この操作は取り消せません。</p>
           <div className="modal-actions">
             <button className="btn-secondary" onClick={() => setDeleting(null)} disabled={busy}>
