@@ -1785,6 +1785,42 @@ export async function deleteCustomerVisits(customerName: string): Promise<void> 
 }
 
 // ============================================================
+// 店舗共通設定 (store_settings テーブル)
+// 読み: キャスト紐付け済み全員 / 書き: 管理者のみ (RLS)
+// ============================================================
+
+// 予約フォームの時刻入力の刻み（秒）。1 = 秒単位、300 = 5分刻み
+export const RESERVATION_TIME_STEP_KEY = 'reservation_time_step'
+export const DEFAULT_RESERVATION_TIME_STEP = 1
+
+let _timeStepCache: number | null = null
+
+export async function getReservationTimeStep(): Promise<number> {
+  if (_timeStepCache !== null) return _timeStepCache
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('value')
+    .eq('key', RESERVATION_TIME_STEP_KEY)
+    .maybeSingle()
+  if (error) throw error
+  const v = Number(data?.value)
+  _timeStepCache = Number.isFinite(v) && v >= 1 ? Math.floor(v) : DEFAULT_RESERVATION_TIME_STEP
+  return _timeStepCache
+}
+
+export async function setReservationTimeStep(stepSec: number): Promise<void> {
+  const v = Math.max(1, Math.floor(Number(stepSec) || DEFAULT_RESERVATION_TIME_STEP))
+  const { error } = await supabase
+    .from('store_settings')
+    .upsert(
+      { key: RESERVATION_TIME_STEP_KEY, value: v, updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+  if (error) throw error
+  _timeStepCache = v
+}
+
+// ============================================================
 // AkariApi 互換のディスパッチャ — 既存タブの最小変更で移行
 // ============================================================
 

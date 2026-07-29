@@ -4,6 +4,7 @@ export type AdminSub =
   | 'cast'
   | 'room'
   | 'pricing'
+  | 'store'
   | 'session'
   | 'budget'
   | 'insights'

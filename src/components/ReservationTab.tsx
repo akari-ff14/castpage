@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { db, type CustomerSummary } from '../lib/db'
+import { db, getReservationTimeStep, DEFAULT_RESERVATION_TIME_STEP, type CustomerSummary } from '../lib/db'
 import { fmtCurrency, fmtDate, fmtDateTime, fmtBizTime } from '../lib/format'
 import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
 import { Play, Clock, Plus, Minus, Sparkles, AlertTriangle } from '../icons'
@@ -45,10 +45,23 @@ function toLocalInput(iso: string): string {
   return jst.toISOString().slice(0, 19)
 }
 
-// 現在時刻（JST）を "YYYY-MM-DDTHH:mm:ss" で返す（丸めなし。即時対応の記録用に秒まで）
-function nowJstInput(): string {
+// 現在時刻（JST）を "YYYY-MM-DDTHH:mm:ss" で返す。
+// stepSec = 1（秒単位）なら丸めなしで即時対応の時刻をそのまま、
+// それ以外は設定の刻みに丸める（例: 300 = 5分単位、四捨五入）
+function nowJstInput(stepSec: number): string {
   const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
+  if (stepSec > 1) {
+    const stepMs = stepSec * 1000
+    jst.setTime(Math.round(jst.getTime() / stepMs) * stepMs)
+  }
   return jst.toISOString().slice(0, 19)
+}
+
+// 時刻欄のラベル（設定された刻みに応じて変える）
+function timeLabel(stepSec: number): string {
+  if (stepSec < 60) return '時刻（秒まで指定可）'
+  if (stepSec === 60) return '時刻（分単位）'
+  return `時刻（${Math.round(stepSec / 60)}分刻み）`
 }
 
 // input value (JST) → UTC ISO。秒は省略可（"HH:mm" / "HH:mm:ss" 両対応）
@@ -153,6 +166,8 @@ export default function ReservationTab({
   const [blConfirm, setBlConfirm] = useState<BlMatch[] | null>(null)
   // 既存顧客名（入力サジェスト用。ローマ字/かな入力の手間軽減）
   const [knownNames, setKnownNames] = useState<string[]>([])
+  // 時刻入力の刻み（秒）。管理タブ → 店舗設定で変更できる
+  const [timeStep, setTimeStep] = useState(DEFAULT_RESERVATION_TIME_STEP)
   const toast = useToast()
 
   // フォームを開いている間、入力内容を下書きとして保持
@@ -269,6 +284,8 @@ export default function ReservationTab({
       if (rPrice.ok) setPricing(rPrice.data)
       if (rNames.ok) setKnownNames(rNames.data || [])
     })()
+    // 時刻刻みの設定（失敗時は既定値のまま）
+    getReservationTimeStep().then(setTimeStep).catch(() => {})
   }, [])
 
   const filtered = list.filter((r) => {
@@ -694,12 +711,12 @@ export default function ReservationTab({
               />
             </div>
             <div className="form-group">
-              <label className="form-label">時刻（秒まで指定可）</label>
+              <label className="form-label">{timeLabel(timeStep)}</label>
               <input
                 type="time"
-                step="1"
+                step={timeStep}
                 className="form-input"
-                value={timeVal}
+                value={timeStep >= 60 ? timeVal.slice(0, 5) : timeVal}
                 onChange={(e) => setDateTime(dateVal, e.target.value)}
               />
             </div>
@@ -708,7 +725,7 @@ export default function ReservationTab({
             type="button"
             className="btn-now"
             onClick={() => {
-              const [d = '', t = ''] = nowJstInput().split('T')
+              const [d = '', t = ''] = nowJstInput(timeStep).split('T')
               setDateTime(d, t)
             }}
           >

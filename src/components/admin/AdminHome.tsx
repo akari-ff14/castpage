@@ -5,6 +5,7 @@ import {
   fetchAdminHomeStats,
   getExpenses,
   getPricing,
+  getReservationTimeStep,
   listAllCasts,
   listAllRooms,
   type AdminHomeStats,
@@ -16,6 +17,7 @@ import {
   DoorOpen,
   MessageSquare,
   RefreshCw,
+  Settings,
   Tag,
   TrendingUp,
   Users,
@@ -38,6 +40,7 @@ interface DerivedStats {
   optionPrice: number | null
   thisMonthExpense: number
   thisMonthExpenseCount: number
+  timeStep: number | null
   sessions: AdminHomeStats | null
 }
 
@@ -51,7 +54,14 @@ const EMPTY: DerivedStats = {
   optionPrice: null,
   thisMonthExpense: 0,
   thisMonthExpenseCount: 0,
+  timeStep: null,
   sessions: null,
+}
+
+// 予約時刻の刻み表示（例: 1 → 1秒単位、300 → 5分単位）
+function timeStepText(sec: number | null): string {
+  if (sec == null) return '—'
+  return sec < 60 ? `${sec}秒単位` : `${Math.round(sec / 60)}分単位`
 }
 
 function priceOf(pricing: PricingEntry[], key: string): number | null {
@@ -68,12 +78,13 @@ export default function AdminHome({ onNavigate }: Props) {
     setBusy(true)
     setErr('')
     try {
-      const [casts, rooms, pricing, expenses, sessions] = await Promise.all([
+      const [casts, rooms, pricing, expenses, sessions, timeStep] = await Promise.all([
         listAllCasts(),
         listAllRooms(),
         getPricing(),
         getExpenses(),
         fetchAdminHomeStats(),
+        getReservationTimeStep().catch(() => null),
       ])
       const now = new Date()
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
@@ -88,6 +99,7 @@ export default function AdminHome({ onNavigate }: Props) {
         optionPrice: priceOf(pricing, 'option'),
         thisMonthExpense: thisMonth.reduce((sum, e) => sum + e.金額, 0),
         thisMonthExpenseCount: thisMonth.length,
+        timeStep,
         sessions,
       })
     } catch (e) {
@@ -158,6 +170,19 @@ export default function AdminHome({ onNavigate }: Props) {
             <Kpi
               value={s?.normalPrice != null ? fmtCurrency(s.normalPrice) : '—'}
               sub={s?.vipPrice != null ? `VIP ${fmtCurrency(s.vipPrice)} / オプション ${s.optionPrice != null ? fmtCurrency(s.optionPrice) : '—'}` : '読み込み中…'}
+            />
+          </StatusCard>
+
+          <StatusCard
+            accent="gold"
+            icon={<Settings size={20} />}
+            title="店舗設定"
+            onClick={() => onNavigate('store')}
+            actionLabel="開く"
+          >
+            <Kpi
+              value={s ? timeStepText(s.timeStep) : '—'}
+              sub={s ? '予約時刻の入力単位' : '読み込み中…'}
             />
           </StatusCard>
         </div>
