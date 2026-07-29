@@ -35,54 +35,31 @@ interface BlMatch {
   reason?: string
 }
 
-// JSTのISO風文字列→ datetime-local input value (YYYY-MM-DDTHH:mm)
+// JSTのISO風文字列→ input value (YYYY-MM-DDTHH:mm:ss、秒まで保持)
 function toLocalInput(iso: string): string {
   if (!iso) return ''
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
   // JST に変換
   const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
-  return jst.toISOString().slice(0, 16)
+  return jst.toISOString().slice(0, 19)
 }
 
-// 営業時間帯（開始〜終了、終了が開始より小さい場合は翌日にまたぐ夜間営業扱い）
-// 営業は基本 21:00 開始なので、その前の時間は予約候補から除外する
-const OPEN_MIN = 21 * 60   // 21:00 開始
-const CLOSE_MIN = 4 * 60   // 翌 4:00 終了（この時刻は含まない）
-
-// 5分刻みの時刻候補。営業開始時刻から順に並べ、深夜帯（翌日分）は末尾に来る
-const TIME_OPTIONS: string[] = (() => {
-  const out: string[] = []
-  // 営業が日をまたぐ場合の総分数（OPEN→CLOSE）
-  const span = CLOSE_MIN > OPEN_MIN ? CLOSE_MIN - OPEN_MIN : 24 * 60 - OPEN_MIN + CLOSE_MIN
-  for (let i = 0; i < span; i += 5) {
-    const min = (OPEN_MIN + i) % (24 * 60)
-    const h = Math.floor(min / 60)
-    const m = min % 60
-    out.push(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`)
-  }
-  return out
-})()
-
-// 現在時刻（JST）を datetime-local 形式 "YYYY-MM-DDTHH:mm" で返す（5分単位に丸め）
+// 現在時刻（JST）を "YYYY-MM-DDTHH:mm:ss" で返す（丸めなし。即時対応の記録用に秒まで）
 function nowJstInput(): string {
   const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
-  // 5分単位に丸め（四捨五入）
-  const mins = jst.getUTCMinutes()
-  const rounded = Math.round(mins / 5) * 5
-  jst.setUTCMinutes(rounded, 0, 0)
-  return jst.toISOString().slice(0, 16)
+  return jst.toISOString().slice(0, 19)
 }
 
-// datetime-local input value (JST) → UTC ISO
+// input value (JST) → UTC ISO。秒は省略可（"HH:mm" / "HH:mm:ss" 両対応）
 function fromLocalInput(local: string): string {
   if (!local) return ''
   // localは「JSTの壁時計時刻」として扱い、UTCに戻す
   const [datePart, timePart] = local.split('T')
   const [y, m, d] = datePart.split('-').map(Number)
-  const [hh, mm] = timePart.split(':').map(Number)
+  const [hh, mm, ss] = timePart.split(':').map(Number)
   // JST = UTC + 9h なので UTC = JST - 9h
-  const utc = new Date(Date.UTC(y, m - 1, d, hh, mm) - 9 * 60 * 60 * 1000)
+  const utc = new Date(Date.UTC(y, m - 1, d, hh, mm, ss || 0) - 9 * 60 * 60 * 1000)
   return utc.toISOString()
 }
 
@@ -349,15 +326,11 @@ export default function ReservationTab({
   // 料金 = 種別の枠単価 × 枠数（30分=1枠）
   const calcPrice = pricingEntry ? pricingEntry.price * (form.durationMin / 30) : 0
 
-  // form.datetime ("YYYY-MM-DDTHH:mm") を 日付 / 時刻 に分解して扱う
+  // form.datetime ("YYYY-MM-DDTHH:mm:ss") を 日付 / 時刻 に分解して扱う
   const [dateVal, timeVal] = (() => {
     const [d = '', t = ''] = form.datetime.split('T')
     return [d, t]
   })()
-  // 編集時、既存データが5分刻みでない場合でも選べるよう先頭に補う
-  const timeOptions = timeVal && !TIME_OPTIONS.includes(timeVal)
-    ? [timeVal, ...TIME_OPTIONS]
-    : TIME_OPTIONS
   // 日付・時刻はどちらか片方だけ選んだ状態でも保持できるよう、
   // "YYYY-MM-DDTHH:mm" 形式で空の側を許容する（両方空のときだけ ''）
   const setDateTime = (date: string, time: string) =>
@@ -686,6 +659,18 @@ export default function ReservationTab({
                         )}
                       </p>
                     )}
+                    {summary && summary.visits.length > 0 && (
+                      <div className="res-visit-list">
+                        {summary.visits.map((v, vi) => (
+                          <span key={vi} className="res-visit-chip">
+                            {fmtDate(v.visitedAt)} {v.cast || '担当不明'}
+                          </span>
+                        ))}
+                        {summary.visitCount > summary.visits.length && (
+                          <span className="res-visit-more">ほか{summary.visitCount - summary.visits.length}回</span>
+                        )}
+                      </div>
+                    )}
                     {nm && (blMatches.get(nm)?.length ?? 0) > 0 && (
                       <p className="res-bl-hint">
                         <AlertTriangle size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
@@ -709,17 +694,14 @@ export default function ReservationTab({
               />
             </div>
             <div className="form-group">
-              <label className="form-label">時刻（5分刻み）</label>
-              <div className="select-wrap">
-                <select
-                  className="form-select"
-                  value={timeVal}
-                  onChange={(e) => setDateTime(dateVal, e.target.value)}
-                >
-                  <option value="">--:--</option>
-                  {timeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
+              <label className="form-label">時刻（秒まで指定可）</label>
+              <input
+                type="time"
+                step="1"
+                className="form-input"
+                value={timeVal}
+                onChange={(e) => setDateTime(dateVal, e.target.value)}
+              />
             </div>
           </div>
           <button

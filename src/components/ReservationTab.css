@@ -216,6 +216,32 @@
   color: var(--gold);
 }
 
+/* 顧客名入力時の過去対応履歴（いつ・だれが対応したか） */
+.res-visit-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 4px 2px 0;
+}
+
+.res-visit-chip {
+  font-size: 11px;
+  line-height: 1;
+  padding: 4px 7px;
+  border-radius: 999px;
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  white-space: nowrap;
+}
+
+.res-visit-more {
+  font-size: 11px;
+  align-self: center;
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
 /* 「今すぐOK」表示（空きキャスト） */
 .avail-time.avail-free {
   color: var(--green, #3fb950);

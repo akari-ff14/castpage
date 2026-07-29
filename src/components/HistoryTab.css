@@ -29,6 +29,42 @@
   margin-left: auto;
 }
 
+/* フリーワード検索欄 */
+.history-search {
+  position: relative;
+  display: flex;
+  align-items: center;
+  margin-top: 8px;
+}
+
+.history-search-icon {
+  position: absolute;
+  left: 10px;
+  color: var(--text-dim);
+  pointer-events: none;
+}
+
+.history-search .form-input {
+  padding-left: 30px;
+  padding-right: 30px;
+}
+
+.history-search-clear {
+  position: absolute;
+  right: 4px;
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-size: 16px;
+  line-height: 1;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.history-search-clear:hover {
+  color: var(--text);
+}
+
 .history-card {
   background: var(--surface);
   border: 1px solid var(--border);

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { db, deleteSession, getCastsAndRooms, getPricing, updateHistorySession, type CustomerSummary } from '../lib/db'
 import { fmtCurrency, fmtDate, fmtDateTime, fmtTime } from '../lib/format'
-import { Crown, AlertTriangle, Clock, Plus, Minus, Sparkles } from '../icons'
+import { Crown, AlertTriangle, Clock, Plus, Minus, Sparkles, Search } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import './HistoryTab.css'
@@ -180,6 +180,7 @@ export default function HistoryTab({
   const [year, setYear] = useState(initial.year)
   const [month, setMonth] = useState(initial.month)
   const [castFilter, setCastFilter] = useState<'mine' | 'all'>('mine')
+  const [query, setQuery] = useState('')
   const [list, setList] = useState<HistorySession[]>([])
   const [loading, setLoading] = useState(false)
   const [err, setErr] = useState('')
@@ -267,7 +268,16 @@ export default function HistoryTab({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(namesInForm)])
 
-  const filtered = castFilter === 'mine' ? list.filter((s) => s.対応者 === castName) : list
+  // キャストフィルタ + フリーワード検索（顧客名/対応者/ルーム/備考/接客種別）
+  const q = query.trim().toLowerCase()
+  const filtered = list.filter((s) => {
+    if (castFilter === 'mine' && s.対応者 !== castName) return false
+    if (q) {
+      const hay = `${s.顧客名} ${s.対応者} ${s.ルーム} ${s.備考} ${s.接客種別表示名}`.toLowerCase()
+      if (!hay.includes(q)) return false
+    }
+    return true
+  })
 
   function canEdit(s: HistorySession): boolean {
     return isAdmin || s.対応者 === castName
@@ -445,6 +455,28 @@ export default function HistoryTab({
             {loading ? '...' : '更新'}
           </button>
         </div>
+        <div className="history-search">
+          <Search size={14} className="history-search-icon" />
+          <input
+            type="text"
+            className="form-input"
+            placeholder="検索（顧客名・対応者・ルーム・備考）"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            list="history-known-customers"
+            autoComplete="off"
+          />
+          {query && (
+            <button
+              type="button"
+              className="history-search-clear"
+              onClick={() => setQuery('')}
+              aria-label="検索をクリア"
+            >
+              ×
+            </button>
+          )}
+        </div>
       </div>
 
       <button className="btn-add-top" onClick={openAdd}>＋ 履歴を追加（過去分・キャンセル）</button>
@@ -452,7 +484,9 @@ export default function HistoryTab({
       {err && <div className="card"><p className="err">エラー: {err}</p></div>}
       {loading && !list.length && <div className="card"><p className="muted">読み込み中...</p></div>}
       {!loading && !filtered.length && (
-        <div className="card empty-state">この期間の履歴はありません</div>
+        <div className="card empty-state">
+          {q ? '検索条件に一致する履歴はありません' : 'この期間の履歴はありません'}
+        </div>
       )}
 
       {filtered.map((s) => (

@@ -75,12 +75,18 @@ export interface ReservationShape {
 }
 
 // 予約フォームで顧客名を入れた時に出す来店サマリー
+export interface CustomerVisitBrief {
+  visitedAt: string           // 来店日時
+  cast: string                // 対応キャスト
+}
+
 export interface CustomerSummary {
   visitCount: number          // 来店回数（customer_visits ベース）
   lastVisitAt: string | null  // 最終来店日時
   casts: string[]             // 担当したことのあるキャスト
   lastCast: string | null     // 最終対応キャスト（最新の来店の担当）
   cancelledResCount: number   // 予約キャンセル済みの回数
+  visits: CustomerVisitBrief[] // 来店履歴（新しい順、直近20件。いつ・だれが対応したか）
 }
 
 export interface FinishBreakdown {
@@ -333,11 +339,13 @@ export async function getReservations(): Promise<ReservationShape[]> {
 
 export async function getHistory(params?: { year?: number; month?: number }): Promise<SessionShape[]> {
   const pricing = await loadPricing()
+  // 並び・月フィルタは started_at（実際の接客日時）基準。
+  // created_at 基準だと過去分を後から手入力した際に入力日で並んでしまい、時系列が崩れる
   let q = supabase
     .from('sessions')
     .select(SESSION_SELECT)
     .eq('finished', true)
-    .order('created_at', { ascending: false })
+    .order('started_at', { ascending: false })
 
   if (params?.year && params?.month) {
     // JST 月初〜翌月初
@@ -346,7 +354,7 @@ export async function getHistory(params?: { year?: number; month?: number }): Pr
     const JST_OFFSET_MS = 9 * 60 * 60 * 1000
     const startUtc = new Date(Date.UTC(y, m - 1, 1) - JST_OFFSET_MS).toISOString()
     const endUtc = new Date(Date.UTC(y, m, 1) - JST_OFFSET_MS).toISOString()
-    q = q.gte('created_at', startUtc).lt('created_at', endUtc)
+    q = q.gte('started_at', startUtc).lt('started_at', endUtc)
   }
   const { data, error } = await q
   if (error) throw error
@@ -808,7 +816,7 @@ export async function deleteReservation(reservationId: string): Promise<void> {
 // 予約フォームで顧客名を入力した時に出す来店サマリー（リピート判定用）
 export async function getCustomerSummary(customerName: string): Promise<CustomerSummary> {
   const name = String(customerName || '').trim()
-  if (!name) return { visitCount: 0, lastVisitAt: null, casts: [], lastCast: null, cancelledResCount: 0 }
+  if (!name) return { visitCount: 0, lastVisitAt: null, casts: [], lastCast: null, cancelledResCount: 0, visits: [] }
 
   // ilike のワイルドカードをエスケープ（予約側は複数名がカンマ区切りで入るため部分一致で探す）
   const escaped = name.replace(/[%_]/g, (m) => `\\${m}`)
@@ -841,6 +849,10 @@ export async function getCustomerSummary(customerName: string): Promise<Customer
     // visits は降順ソート済みなので先頭の担当キャストが「最終対応」
     lastCast: casts[0] || null,
     cancelledResCount: cancelledRes.count || 0,
+    visits: visits.slice(0, 20).map((v) => ({
+      visitedAt: v.visited_at,
+      cast: (v.cast as { name?: string } | null)?.name || '',
+    })),
   }
 }
 
@@ -1659,7 +1671,7 @@ export async function updateHistorySession(
   // 現在の値を取得
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('cast_id, room_id, service_type, base_price, option_price, customer_count, customer_names, extend_count, option_count, cancelled')
+    .select('cast_id, room_id, service_type, base_price, option_price, customer_count, customer_names, extend_count, option_count, cancelled, started_at')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -1701,6 +1713,14 @@ export async function updateHistorySession(
   const newOptCnt = fields.option_count !== undefined ? Math.max(0, fields.option_count) : Number(cur.option_count) || 0
   if (fields.extend_count !== undefined) updates.extend_count = newExt
   if (fields.option_count !== undefined) updates.option_count = newOptCnt
+  // 延長回数を変えたら終了予定時刻も追随させる（startSession/extendSession と同じ
+  // 「開始 + 30分 × (1+延長)」）。進行中の接客なら予約タブのタイムライン・空き時刻に反映される
+  if (fields.extend_count !== undefined && newExt !== (Number(cur.extend_count) || 0) && !cur.cancelled) {
+    const startMs = new Date(cur.started_at).getTime()
+    if (!isNaN(startMs)) {
+      updates.ended_at = new Date(startMs + 30 * 60 * 1000 * (1 + newExt)).toISOString()
+    }
+  }
   // 備考
   if (fields.note !== undefined) updates.note = fields.note
 
