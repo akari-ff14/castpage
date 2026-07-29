@@ -669,7 +669,11 @@ async function assertNoReservationConflict(params: {
   durationMin: number
   excludeId?: string
 }): Promise<void> {
-  const startMs = new Date(params.startIso).getTime()
+  // 重なり判定は分に切り捨てて行う。時刻表示 (fmtBizTime) が分単位のため、
+  // 秒付き予約 (例 21:30:45〜22:30:45) の直後に「表示上の終了時刻」ちょうど (22:30) の
+  // 予約を入れたとき、画面では重なっていないのに拒否される — を防ぐ
+  const floorMin = (ms: number) => Math.floor(ms / 60000) * 60000
+  const startMs = floorMin(new Date(params.startIso).getTime())
   if (isNaN(startMs)) return
   const endMs = startMs + Math.max(30, params.durationMin) * 60 * 1000
   // 前後24時間の予約だけ見れば重複判定には十分
@@ -688,7 +692,7 @@ async function assertNoReservationConflict(params: {
   for (const r of data || []) {
     if (params.excludeId && r.id === params.excludeId) continue
     if (r.cancelled || r.converted_at) continue
-    const rs = new Date(r.reserved_at).getTime()
+    const rs = floorMin(new Date(r.reserved_at).getTime())
     if (isNaN(rs)) continue
     const re = rs + (Number(r.duration_min) || 60) * 60 * 1000
     if (!(rs < endMs && startMs < re)) continue  // 重なっていない
@@ -821,10 +825,13 @@ export async function getCustomerSummary(customerName: string): Promise<Customer
   // ilike のワイルドカードをエスケープ（予約側は複数名がカンマ区切りで入るため部分一致で探す）
   const escaped = name.replace(/[%_]/g, (m) => `\\${m}`)
 
-  const [visitsRes, cancelledRes] = await Promise.all([
+  const [visitsRes, cancelledRes, castsRes] = await Promise.all([
     supabase
       .from('customer_visits')
-      .select('visited_at, cast:casts(name)')
+      // キャスト名は cast:casts(name) の embed で取らない。casts テーブルの RLS は
+      // 「管理者 or 自分の行のみ」なので、非管理者だと他キャスト分が null になり
+      // 「最終対応」や来店履歴チップが担当不明になる。casts_public は全 authenticated が読める
+      .select('visited_at, cast_id')
       .ilike('customer_name', escaped)
       .order('visited_at', { ascending: false }),
     supabase
@@ -832,14 +839,17 @@ export async function getCustomerSummary(customerName: string): Promise<Customer
       .select('id', { count: 'exact', head: true })
       .eq('cancelled', true)
       .ilike('customer_name', `%${escaped}%`),
+    supabase.from('casts_public').select('id, name'),
   ])
   if (visitsRes.error) throw visitsRes.error
   if (cancelledRes.error) throw cancelledRes.error
+  if (castsRes.error) throw castsRes.error
 
+  const nameById = new Map((castsRes.data || []).map((c) => [c.id as string, c.name as string]))
   const visits = visitsRes.data || []
   const casts: string[] = []
   for (const v of visits) {
-    const c = (v.cast as { name?: string } | null)?.name
+    const c = v.cast_id ? nameById.get(v.cast_id) : undefined
     if (c && !casts.includes(c)) casts.push(c)
   }
   return {
@@ -851,7 +861,7 @@ export async function getCustomerSummary(customerName: string): Promise<Customer
     cancelledResCount: cancelledRes.count || 0,
     visits: visits.slice(0, 20).map((v) => ({
       visitedAt: v.visited_at,
-      cast: (v.cast as { name?: string } | null)?.name || '',
+      cast: (v.cast_id ? nameById.get(v.cast_id) : '') || '',
     })),
   }
 }
@@ -1793,10 +1803,10 @@ export async function deleteCustomerVisits(customerName: string): Promise<void> 
 export const RESERVATION_TIME_STEP_KEY = 'reservation_time_step'
 export const DEFAULT_RESERVATION_TIME_STEP = 1
 
-let _timeStepCache: number | null = null
-
+// キャッシュしない: モジュールキャッシュだと別端末での設定変更がフルリロードまで
+// 反映されず、別の管理者端末の設定画面が DB と違う値を表示してしまう。
+// 呼び出しはタブのマウント時のみ (1行 SELECT) なので毎回取得で十分軽い
 export async function getReservationTimeStep(): Promise<number> {
-  if (_timeStepCache !== null) return _timeStepCache
   const { data, error } = await supabase
     .from('store_settings')
     .select('value')
@@ -1804,8 +1814,7 @@ export async function getReservationTimeStep(): Promise<number> {
     .maybeSingle()
   if (error) throw error
   const v = Number(data?.value)
-  _timeStepCache = Number.isFinite(v) && v >= 1 ? Math.floor(v) : DEFAULT_RESERVATION_TIME_STEP
-  return _timeStepCache
+  return Number.isFinite(v) && v >= 1 ? Math.floor(v) : DEFAULT_RESERVATION_TIME_STEP
 }
 
 export async function setReservationTimeStep(stepSec: number): Promise<void> {
@@ -1817,7 +1826,6 @@ export async function setReservationTimeStep(stepSec: number): Promise<void> {
       { onConflict: 'key' },
     )
   if (error) throw error
-  _timeStepCache = v
 }
 
 // ============================================================

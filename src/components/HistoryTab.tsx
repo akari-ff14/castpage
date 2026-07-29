@@ -503,8 +503,10 @@ export default function HistoryTab({
             <span className="history-revenue">{s.キャンセル ? '—' : fmtCurrency(s.収益金)}</span>
           </div>
           <div className="history-row">
+            {/* ソート・月フィルタと同じ started_at 基準の日時。created_at だと
+                過去分を後から手入力したとき入力日が出て、一覧の並びと食い違って見える */}
             <span className="muted">日時</span>
-            <span>{fmtDateTime(s.作成日時)}</span>
+            <span>{fmtDateTime(s.開始時間)}</span>
           </div>
           <div className="history-row">
             <span className="muted">時間</span>
@@ -803,7 +805,7 @@ export default function HistoryTab({
         <Modal onClose={() => !busy && setDeleting(null)}>
           <h3>履歴を削除しますか？</h3>
           <p className="muted">
-            {fmtDateTime(deleting.作成日時)} ｜ {deleting.対応者} ｜ {deleting.顧客名 || '—'}<br />
+            {fmtDateTime(deleting.開始時間)} ｜ {deleting.対応者} ｜ {deleting.顧客名 || '—'}<br />
             収益: {fmtCurrency(deleting.収益金)}
           </p>
           <p className="err">

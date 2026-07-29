@@ -348,6 +348,9 @@ export default function ReservationTab({
     const [d = '', t = ''] = form.datetime.split('T')
     return [d, t]
   })()
+  // 表示・保存に使う時刻。分単位以上の設定では編集前データに残っている秒を切り落とし、
+  // 画面表示 (HH:mm) と保存値が食い違わないようにする
+  const timeShown = timeStep >= 60 ? timeVal.slice(0, 5) : timeVal
   // 日付・時刻はどちらか片方だけ選んだ状態でも保持できるよう、
   // "YYYY-MM-DDTHH:mm" 形式で空の側を許容する（両方空のときだけ ''）
   const setDateTime = (date: string, time: string) =>
@@ -393,7 +396,7 @@ export default function ReservationTab({
       ...(form.reservation_id ? { reservationId: form.reservation_id } : {}),
       castName: form.castName,
       customerName: form.customerNames.map((s) => s.trim()).filter(Boolean).join(', '),
-      datetime: fromLocalInput(form.datetime),
+      datetime: fromLocalInput(`${dateVal}T${timeShown}`),
       room: form.room,
       reservationPrice: calcPrice,
       durationMin: form.durationMin,
@@ -707,7 +710,7 @@ export default function ReservationTab({
                 type="date"
                 className="form-input"
                 value={dateVal}
-                onChange={(e) => setDateTime(e.target.value, timeVal)}
+                onChange={(e) => setDateTime(e.target.value, timeShown)}
               />
             </div>
             <div className="form-group">
@@ -716,7 +719,7 @@ export default function ReservationTab({
                 type="time"
                 step={timeStep}
                 className="form-input"
-                value={timeStep >= 60 ? timeVal.slice(0, 5) : timeVal}
+                value={timeShown}
                 onChange={(e) => setDateTime(dateVal, e.target.value)}
               />
             </div>
