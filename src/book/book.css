@@ -1,0 +1,622 @@
+/* お客様向け予約ページ。
+   キャスト用アプリの App.css は読み込まない（配信ファイルを分けているため）。
+   店の営業が 21 時からの夜なので、暗い地に灯火の色をひとつ置く配色で通す。
+   テーマ切り替えはないので、色は端末の設定に関わらずここで決め切る。 */
+
+:root {
+  --bk-ground: #14100f;
+  --bk-surface: #1e1817;
+  --bk-surface2: #262020;
+  --bk-line: #352b29;
+  --bk-line2: #4a3b37;
+
+  --bk-lamp: #e0b464;      /* 灯火。ページで一番強い色はここだけ */
+  --bk-lamp-dim: #8a6a35;
+  --bk-lamp-bg: #241c12;
+
+  /* 申込中。灯火の金に寄せると「空き」と見分けがつかないので、
+     彩度を落として沈ませる。光っているのは押せる枠だけ、という状態にする */
+  --bk-hold: #93806a;
+  --bk-hold-bg: #1d1917;
+  --bk-full: #9c5f57;      /* 満席 */
+  --bk-full-bg: #241615;
+
+  --bk-ink: #f2ece4;
+  --bk-ink-dim: #a2948b;
+  --bk-ink-faint: #6d605a;
+
+  --bk-serif: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  --bk-sans: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', Meiryo, sans-serif;
+
+  --bk-s1: 4px;
+  --bk-s2: 8px;
+  --bk-s3: 12px;
+  --bk-s4: 16px;
+  --bk-s5: 24px;
+  --bk-s6: 32px;
+  --bk-s7: 48px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background: var(--bk-ground);
+  color: var(--bk-ink);
+  font-family: var(--bk-sans);
+  font-size: 16px;
+  line-height: 1.8;
+  -webkit-font-smoothing: antialiased;
+}
+
+.bk {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 0 var(--bk-s4) var(--bk-s7);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s5);
+}
+
+/* ---------- ヘッダー ---------- */
+
+.bk-header {
+  display: flex;
+  align-items: center;
+  gap: var(--bk-s4);
+  padding: var(--bk-s6) 0 var(--bk-s4);
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bk-lamp {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 1px solid var(--bk-lamp-dim);
+  background: var(--bk-lamp-bg);
+  color: var(--bk-lamp);
+  font-family: var(--bk-serif);
+  font-size: 22px;
+  line-height: 1;
+}
+
+.bk-shop {
+  font-family: var(--bk-serif);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  color: var(--bk-ink-dim);
+}
+
+.bk-h1 {
+  margin: 2px 0 0;
+  font-family: var(--bk-serif);
+  font-size: 22px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ---------- 本体 ---------- */
+
+.bk-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s6);
+}
+
+.bk-loading,
+.bk-error {
+  color: var(--bk-ink-dim);
+  text-align: center;
+  padding: var(--bk-s6) 0;
+}
+
+.bk-error {
+  color: var(--bk-full);
+}
+
+.bk-empty {
+  text-align: center;
+  padding: var(--bk-s6) var(--bk-s4);
+  border: 1px solid var(--bk-line);
+  border-radius: 10px;
+  background: var(--bk-surface);
+}
+
+.bk-empty h2 {
+  margin: 0 0 var(--bk-s2);
+  font-family: var(--bk-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.bk-empty p {
+  margin: 0;
+  color: var(--bk-ink-dim);
+  font-size: 14px;
+}
+
+/* ---------- 日ごとのまとまり ---------- */
+
+.bk-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s3);
+}
+
+.bk-day-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--bk-s2) var(--bk-s3);
+  padding-bottom: var(--bk-s2);
+  border-bottom: 1px solid var(--bk-line);
+}
+
+.bk-day-title {
+  margin: 0;
+  font-family: var(--bk-serif);
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.bk-day-badge {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  color: var(--bk-lamp);
+  background: var(--bk-lamp-bg);
+  border: 1px solid var(--bk-lamp-dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-day-note {
+  margin: 0;
+  padding: var(--bk-s2) var(--bk-s3);
+  border-left: 2px solid var(--bk-lamp-dim);
+  background: var(--bk-surface);
+  color: var(--bk-ink-dim);
+  font-size: 14px;
+}
+
+.bk-day-wait {
+  margin: 0;
+  color: var(--bk-ink-faint);
+  font-size: 13px;
+}
+
+.bk-casts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s3);
+}
+
+.bk-cast {
+  padding: var(--bk-s3);
+  border: 1px solid var(--bk-line);
+  border-radius: 10px;
+  background: var(--bk-surface);
+}
+
+.bk-cast-name {
+  font-family: var(--bk-serif);
+  font-size: 16px;
+  margin-bottom: var(--bk-s2);
+  letter-spacing: 0.06em;
+}
+
+/* ---------- 枠のボタン ---------- */
+
+.bk-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--bk-s2);
+}
+
+.bk-slot {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: var(--bk-s3) var(--bk-s2);
+  border-radius: 8px;
+  border: 1px solid var(--bk-line2);
+  background: var(--bk-surface2);
+  color: var(--bk-ink-dim);
+  font-family: inherit;
+  cursor: default;
+  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+}
+
+.bk-slot-time {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.bk-slot-state {
+  font-size: 12px;
+}
+
+/* 空き = 唯一押せる状態。ページの中でここだけを光らせる */
+.bk-slot-open {
+  border-color: var(--bk-lamp-dim);
+  background: var(--bk-lamp-bg);
+  color: var(--bk-lamp);
+  cursor: pointer;
+}
+
+.bk-slot-open:hover {
+  border-color: var(--bk-lamp);
+  background: #2c2216;
+}
+
+.bk-slot-open:active {
+  transform: translateY(1px);
+}
+
+.bk-slot-pending {
+  color: var(--bk-hold);
+  background: var(--bk-hold-bg);
+  border-color: #3a332c;
+}
+
+.bk-slot-confirmed {
+  color: var(--bk-full);
+  background: var(--bk-full-bg);
+  border-color: #452724;
+}
+
+.bk-slot-closed {
+  color: var(--bk-ink-faint);
+  background: transparent;
+  border-style: dashed;
+}
+
+.bk-slot:focus-visible {
+  outline: 2px solid var(--bk-lamp);
+  outline-offset: 2px;
+}
+
+/* ---------- 凡例 ---------- */
+
+.bk-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--bk-s2) var(--bk-s4);
+  margin: 0;
+  font-size: 13px;
+  color: var(--bk-ink-dim);
+}
+
+.bk-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bk-s2);
+}
+
+.bk-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.bk-dot-open {
+  background: var(--bk-lamp);
+}
+
+.bk-dot-pending {
+  background: var(--bk-hold);
+}
+
+.bk-dot-confirmed {
+  background: var(--bk-full);
+}
+
+/* ---------- 申し込みフォーム ---------- */
+
+.bk-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 5, 5, 0.72);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: var(--bk-s4);
+  z-index: 50;
+}
+
+.bk-sheet {
+  width: 100%;
+  max-width: 480px;
+  max-height: 88vh;
+  overflow-y: auto;
+  padding: var(--bk-s5);
+  border-radius: 14px;
+  border: 1px solid var(--bk-line2);
+  background: var(--bk-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s3);
+}
+
+.bk-sheet-title {
+  margin: 0;
+  font-family: var(--bk-serif);
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.bk-sheet-sub {
+  margin: 0;
+  padding-bottom: var(--bk-s3);
+  border-bottom: 1px solid var(--bk-line);
+  color: var(--bk-lamp);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s1);
+}
+
+.bk-label {
+  display: flex;
+  align-items: center;
+  gap: var(--bk-s2);
+  font-size: 13px;
+  color: var(--bk-ink-dim);
+}
+
+.bk-req,
+.bk-opt {
+  font-style: normal;
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.bk-req {
+  color: var(--bk-lamp);
+  background: var(--bk-lamp-bg);
+  border: 1px solid var(--bk-lamp-dim);
+}
+
+.bk-opt {
+  color: var(--bk-ink-faint);
+  border: 1px solid var(--bk-line2);
+}
+
+.bk-input {
+  width: 100%;
+  padding: var(--bk-s3);
+  border-radius: 8px;
+  border: 1px solid var(--bk-line2);
+  background: var(--bk-ground);
+  color: var(--bk-ink);
+  font-family: inherit;
+  font-size: 16px; /* iOS で focus 時に拡大されないよう 16px 以上を保つ */
+}
+
+.bk-input::placeholder {
+  color: var(--bk-ink-faint);
+}
+
+.bk-input:focus {
+  outline: none;
+  border-color: var(--bk-lamp-dim);
+}
+
+.bk-textarea {
+  resize: vertical;
+  line-height: 1.7;
+}
+
+.bk-form-err {
+  margin: 0;
+  padding: var(--bk-s2) var(--bk-s3);
+  border-radius: 8px;
+  background: var(--bk-full-bg);
+  border: 1px solid #452724;
+  color: var(--bk-full);
+  font-size: 14px;
+}
+
+.bk-sheet-actions {
+  display: flex;
+  gap: var(--bk-s2);
+  margin-top: var(--bk-s2);
+}
+
+.bk-btn {
+  flex: 1;
+  padding: var(--bk-s3) var(--bk-s4);
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.bk-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.bk-btn-primary {
+  background: var(--bk-lamp);
+  color: #1b1409;
+  font-weight: 700;
+}
+
+.bk-btn-primary:hover:not(:disabled) {
+  background: #eec078;
+}
+
+.bk-btn-ghost {
+  background: transparent;
+  border-color: var(--bk-line2);
+  color: var(--bk-ink-dim);
+}
+
+.bk-btn-ghost:hover:not(:disabled) {
+  border-color: var(--bk-ink-faint);
+  color: var(--bk-ink);
+}
+
+.bk-btn:focus-visible {
+  outline: 2px solid var(--bk-lamp);
+  outline-offset: 2px;
+}
+
+/* ---------- 完了画面 ---------- */
+
+.bk-done {
+  padding: var(--bk-s5);
+  border: 1px solid var(--bk-line2);
+  border-radius: 14px;
+  background: var(--bk-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s3);
+}
+
+.bk-done-eyebrow {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.1em;
+  color: var(--bk-lamp);
+}
+
+.bk-done-title {
+  margin: 0;
+  font-family: var(--bk-serif);
+  font-size: 21px;
+  font-weight: 600;
+}
+
+.bk-done-lead {
+  margin: 0;
+  color: var(--bk-ink-dim);
+  font-size: 15px;
+}
+
+.bk-done-detail {
+  margin: 0;
+  padding: var(--bk-s3);
+  border-radius: 10px;
+  background: var(--bk-ground);
+  border: 1px solid var(--bk-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+}
+
+.bk-done-detail > div {
+  display: flex;
+  gap: var(--bk-s4);
+}
+
+.bk-done-detail dt {
+  flex: none;
+  width: 5em;
+  color: var(--bk-ink-faint);
+  font-size: 14px;
+}
+
+.bk-done-detail dd {
+  margin: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-code {
+  display: flex;
+  align-items: baseline;
+  gap: var(--bk-s3);
+  padding: var(--bk-s3);
+  border-radius: 10px;
+  background: var(--bk-lamp-bg);
+  border: 1px solid var(--bk-lamp-dim);
+}
+
+.bk-code-label {
+  font-size: 13px;
+  color: var(--bk-ink-dim);
+}
+
+.bk-code-value {
+  font-size: 24px;
+  letter-spacing: 0.08em;
+  color: var(--bk-lamp);
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-done-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--bk-ink-faint);
+}
+
+/* ---------- フッター ---------- */
+
+.bk-footer {
+  padding-top: var(--bk-s4);
+  border-top: 1px solid var(--bk-line);
+  color: var(--bk-ink-faint);
+  font-size: 13px;
+}
+
+.bk-footer p {
+  margin: 0 0 var(--bk-s1);
+}
+
+@media (min-width: 560px) {
+  .bk-overlay {
+    align-items: center;
+  }
+
+  .bk-cast {
+    display: flex;
+    align-items: center;
+    gap: var(--bk-s4);
+  }
+
+  .bk-cast-name {
+    flex: none;
+    width: 7em;
+    margin-bottom: 0;
+  }
+
+  .bk-slots {
+    flex: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-slot,
+  .bk-btn {
+    transition: none;
+  }
+}
+
+/* 受付中の日に出す「◯時まで受付」。開始の予告ほど強く見せなくてよい */
+.bk-day-badge-quiet {
+  color: var(--bk-ink-dim);
+  background: transparent;
+  border-color: var(--bk-line2);
+}
