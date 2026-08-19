@@ -901,3 +901,24 @@ body {
   color: var(--bk-ink-faint);
   font-size: 13px;
 }
+
+/* 人には見せない入力欄。display:none だと読み飛ばすプログラムがあるので、
+   画面の外へ追い出す形で隠す */
+.bk-trap {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+/* 確認ウィジェット。怪しくないアクセスには何も描かれないので、
+   中身が無いときは余白も出さない */
+.bk-captcha:empty {
+  display: none;
+}
+
+.bk-captcha {
+  display: flex;
+  justify-content: center;
+}

@@ -186,6 +186,9 @@ export default function ReservationTab({
   const [pendingBusy, setPendingBusy] = useState('')          // 処理中の申込 id
   const [rejecting, setRejecting] = useState<PendingReservation | null>(null)
   const [rejectNote, setRejectNote] = useState('')
+  // いたずらで申込が大量に入ったときの一掃用
+  const [rejectAllOpen, setRejectAllOpen] = useState(false)
+  const [rejectAllNote, setRejectAllNote] = useState('')
   const toast = useToast()
 
   // フォームを開いている間、入力内容を下書きとして保持
@@ -341,6 +344,32 @@ export default function ReservationTab({
     } finally {
       setPendingBusy('')
     }
+  }
+
+  // 申込中をまとめて却下する。いたずらで枠を埋められたときに1件ずつ押さずに済むように。
+  // 却下すると枠は空きに戻るので、正当なお客様がすぐ申し込める状態になる
+  async function rejectAllPending() {
+    setPendingBusy('all')
+    const note = rejectAllNote.trim()
+    let done = 0
+    let failed = 0
+    for (const p of pending) {
+      try {
+        await decideReservation(p.id, false, note)
+        await notifyReservationDecision(p.id)
+        done += 1
+      } catch {
+        failed += 1
+      }
+    }
+    setPendingBusy('')
+    setRejectAllOpen(false)
+    setRejectAllNote('')
+    toast.show(
+      failed ? `${done}件をお断りしました（${failed}件は失敗）` : `${done}件をお断りしました`,
+      failed ? 'err' : undefined,
+    )
+    reloadAll()
   }
 
   async function rejectPending() {
@@ -530,7 +559,23 @@ export default function ReservationTab({
           <div className="pending-head">
             <span className="pending-title">お客様からの申込</span>
             <span className="pending-count">{pending.length}件</span>
+            {pending.length >= 2 && (
+              <button
+                className="btn-secondary pending-reject pending-reject-all"
+                disabled={!!pendingBusy}
+                onClick={() => { setRejectAllOpen(true); setRejectAllNote('') }}
+              >
+                すべて却下
+              </button>
+            )}
           </div>
+          {pending.length >= 5 && (
+            <p className="pending-warn">
+              <AlertTriangle size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+              申込が立て込んでいます。心当たりがなければ「すべて却下」で一掃し、
+              管理タブ →受付日 でその日の受付を閉じてください。
+            </p>
+          )}
           <div className="pending-list">
             {pending.map((p) => {
               const bl = blMatches.get(p.customerName) || []
@@ -992,6 +1037,34 @@ export default function ReservationTab({
             </button>
             <button className="btn-danger" onClick={confirmDelete} disabled={busy}>
               {busy ? '削除中...' : '削除する'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {rejectAllOpen && (
+        <Modal onClose={() => !pendingBusy && setRejectAllOpen(false)}>
+          <h3>申込 {pending.length}件をまとめてお断りする</h3>
+          <p className="muted">
+            申込中のものを全部お断りします。押さえられていた枠はすべて空きに戻るので、
+            正当なお客様がすぐ申し込める状態になります。確定済みの予約には影響しません。
+          </p>
+          <div className="form-group">
+            <label className="form-label">お客様に伝える理由（任意）</label>
+            <input
+              type="text"
+              className="form-input"
+              value={rejectAllNote}
+              onChange={(e) => setRejectAllNote(e.target.value)}
+              placeholder="例: 都合により受付を取りやめました"
+            />
+          </div>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setRejectAllOpen(false)} disabled={!!pendingBusy}>
+              やめる
+            </button>
+            <button className="btn-danger" onClick={rejectAllPending} disabled={!!pendingBusy}>
+              {pendingBusy ? '処理中...' : `${pending.length}件をお断りする`}
             </button>
           </div>
         </Modal>

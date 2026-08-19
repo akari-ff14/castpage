@@ -94,12 +94,25 @@ export async function fetchBookingDays(fromDate: string, toDate: string): Promis
 }
 
 // 申し込みの直前だけ匿名アカウントを作る。
-// ページを見ているだけの人にはアカウントを作らない（無駄なアカウントを増やさないため）
-async function ensureSession(): Promise<void> {
+// ページを見ているだけの人にはアカウントを作らない（無駄なアカウントを増やさないため）。
+//
+// captchaToken は Turnstile の確認結果。Supabase Auth 側で Captcha protection を
+// 有効にしてあると、これが無い匿名ログインは弾かれる。
+// 機械的にアカウントを作り直して連投するのを、ここで止める。
+async function ensureSession(captchaToken?: string): Promise<void> {
   const { data } = await supabase.auth.getSession()
   if (data.session) return
-  const { error } = await supabase.auth.signInAnonymously()
-  if (error) throw new Error('接続できませんでした。時間をおいてもう一度お試しください')
+
+  const { error } = await supabase.auth.signInAnonymously(
+    captchaToken ? { options: { captchaToken } } : undefined,
+  )
+  if (error) {
+    // captcha で弾かれたときは、やり直せば通ることを伝える
+    if (/captcha/i.test(error.message)) {
+      throw new Error('確認に失敗しました。ページを開き直してもう一度お試しください')
+    }
+    throw new Error('接続できませんでした。時間をおいてもう一度お試しください')
+  }
 }
 
 export interface SubmitResult {
@@ -117,8 +130,13 @@ export async function submitReservation(payload: {
   customerName: string
   email?: string
   note?: string
+  captchaToken?: string
 }): Promise<SubmitResult> {
-  await ensureSession()
+  try {
+    await ensureSession(payload.captchaToken)
+  } catch (e) {
+    return { ok: false, error: (e as Error).message }
+  }
 
   const { data, error } = await supabase.rpc('request_reservation', {
     p_business_date: payload.businessDate,

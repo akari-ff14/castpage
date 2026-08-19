@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import {
   cancelReservation,
   fetchBookingDays,
@@ -11,6 +11,7 @@ import {
   type PublicSlot,
 } from './api'
 import { disablePush, enablePush, getPushState, type PushState } from './push'
+import { isTurnstileEnabled, renderTurnstile, type TurnstileHandle } from './turnstile'
 import './book.css'
 
 // 受付日を探す範囲。店は先の日程まで開けることがあるので広めに取る
@@ -139,6 +140,16 @@ function SlotPicker() {
   const [formErr, setFormErr] = useState('')
   const [sending, setSending] = useState(false)
 
+  // --- いたずら防止 ---
+  // 人には見えない入力欄。自動入力するプログラムだけがここを埋める
+  const [trap, setTrap] = useState('')
+  // フォームを開いた時刻。人が読んで入力する時間を下回る送信は弾く
+  const openedAt = useRef(0)
+  // Cloudflare の確認結果。サイトキー未設定のときは使わない
+  const [captcha, setCaptcha] = useState('')
+  const captchaBox = useRef<HTMLDivElement | null>(null)
+  const captchaHandle = useRef<TurnstileHandle | null>(null)
+
   const load = useCallback(async () => {
     setErr('')
     try {
@@ -157,6 +168,9 @@ function SlotPicker() {
   function openForm(day: BookingDay, castId: string, castName: string, slot: PublicSlot) {
     setPicked({ day, castId, castName, slot })
     setFormErr('')
+    setTrap('')
+    setCaptcha('')
+    openedAt.current = Date.now()
   }
 
   function closeForm() {
@@ -165,6 +179,23 @@ function SlotPicker() {
     setFormErr('')
   }
 
+  // 確認ウィジェットはフォームを開くたびに描き直す
+  useEffect(() => {
+    if (!picked || !isTurnstileEnabled()) return
+    const box = captchaBox.current
+    if (!box) return
+    let disposed = false
+    renderTurnstile(box, (token) => setCaptcha(token)).then((h) => {
+      if (disposed) h?.remove()
+      else captchaHandle.current = h
+    })
+    return () => {
+      disposed = true
+      captchaHandle.current?.remove()
+      captchaHandle.current = null
+    }
+  }, [picked])
+
   async function send() {
     if (!picked) return
     const trimmed = name.trim()
@@ -172,6 +203,23 @@ function SlotPicker() {
       setFormErr('お名前を入力してください')
       return
     }
+
+    // 人には見えない欄が埋まっている＝自動入力。何が起きたか説明せずに黙って断る
+    if (trap) {
+      setFormErr('送信できませんでした。時間をおいてもう一度お試しください')
+      return
+    }
+    // 開いてから2秒未満の送信は人の操作ではない
+    if (Date.now() - openedAt.current < 2000) {
+      setFormErr('もう一度「この枠を申し込む」を押してください')
+      openedAt.current = 0
+      return
+    }
+    if (isTurnstileEnabled() && !captcha) {
+      setFormErr('確認中です。数秒おいてもう一度お試しください')
+      return
+    }
+
     setSending(true)
     setFormErr('')
     const r = await submitReservation({
@@ -181,8 +229,12 @@ function SlotPicker() {
       customerName: trimmed,
       email: email.trim() || undefined,
       note: note.trim() || undefined,
+      captchaToken: captcha || undefined,
     })
     setSending(false)
+    // 確認結果は1回きり。失敗しても成功しても取り直す
+    captchaHandle.current?.reset()
+    setCaptcha('')
 
     if (!r.ok) {
       setFormErr(r.error || '送信できませんでした')
@@ -383,6 +435,22 @@ function SlotPicker() {
                 placeholder="はじめての方はその旨など"
               />
             </label>
+
+            {/* 人には見せない欄。プログラムはラベルを読んで律儀に埋めてくれる */}
+            <div className="bk-trap" aria-hidden="true">
+              <label htmlFor="bk-website">ホームページ</label>
+              <input
+                id="bk-website"
+                name="website"
+                type="text"
+                tabIndex={-1}
+                autoComplete="off"
+                value={trap}
+                onChange={(e) => setTrap(e.target.value)}
+              />
+            </div>
+
+            <div ref={captchaBox} className="bk-captcha" />
 
             {formErr && <p className="bk-form-err">{formErr}</p>}
 
