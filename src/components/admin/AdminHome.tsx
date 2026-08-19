@@ -4,16 +4,19 @@ import ActivityFeed from '../ActivityFeed'
 import {
   fetchAdminHomeStats,
   getExpenses,
+  getPendingReservations,
   getPricing,
+  getReservationDays,
   getReservationTimeStep,
   listAllCasts,
   listAllRooms,
   type AdminHomeStats,
   type PricingEntry,
 } from '../../lib/db'
-import { fmtCurrency } from '../../lib/format'
+import { fmtCurrency, jstToday } from '../../lib/format'
 import {
   ArrowLeft,
+  Calendar,
   DoorOpen,
   MessageSquare,
   RefreshCw,
@@ -42,6 +45,22 @@ interface DerivedStats {
   thisMonthExpenseCount: number
   timeStep: number | null
   sessions: AdminHomeStats | null
+  openDayCount: number       // これから先で受付を開いている日
+  nextOpenDate: string | null // そのうち一番近い日
+  pendingCount: number        // お客様からの申込で未処理のもの
+}
+
+// 'YYYY-MM-DD' を n 日ずらす
+function addDays(isoDate: string, n: number): string {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10)
+}
+
+// 受付日カードのサブ表示（8/20 のような短い形）
+function shortDate(isoDate: string | null): string {
+  if (!isoDate) return ''
+  const [, m, d] = isoDate.split('-').map(Number)
+  return `${m}/${d}`
 }
 
 const EMPTY: DerivedStats = {
@@ -56,6 +75,9 @@ const EMPTY: DerivedStats = {
   thisMonthExpenseCount: 0,
   timeStep: null,
   sessions: null,
+  openDayCount: 0,
+  nextOpenDate: null,
+  pendingCount: 0,
 }
 
 // 予約時刻の刻み表示（例: 1 → 1秒単位、300 → 5分単位）
@@ -78,14 +100,18 @@ export default function AdminHome({ onNavigate }: Props) {
     setBusy(true)
     setErr('')
     try {
-      const [casts, rooms, pricing, expenses, sessions, timeStep] = await Promise.all([
+      const today = jstToday()
+      const [casts, rooms, pricing, expenses, sessions, timeStep, days, pendingRows] = await Promise.all([
         listAllCasts(),
         listAllRooms(),
         getPricing(),
         getExpenses(),
         fetchAdminHomeStats(),
         getReservationTimeStep().catch(() => null),
+        getReservationDays(today, addDays(today, 120)).catch(() => []),
+        getPendingReservations().catch(() => []),
       ])
+      const openDays = days.filter((d) => d.isOpen).sort((a, b) => a.businessDate.localeCompare(b.businessDate))
       const now = new Date()
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       const thisMonth = expenses.filter((e) => e.日付.startsWith(ym))
@@ -101,6 +127,9 @@ export default function AdminHome({ onNavigate }: Props) {
         thisMonthExpenseCount: thisMonth.length,
         timeStep,
         sessions,
+        openDayCount: openDays.length,
+        nextOpenDate: openDays[0]?.businessDate ?? null,
+        pendingCount: pendingRows.length,
       })
     } catch (e) {
       setErr((e as Error).message)
@@ -191,6 +220,28 @@ export default function AdminHome({ onNavigate }: Props) {
       <section className="admin-home-group">
         <h4 className="admin-section-h">運用</h4>
         <div className="admin-home-grid">
+          <StatusCard
+            accent="teal"
+            icon={<Calendar size={20} />}
+            title="受付日"
+            onClick={() => onNavigate('days')}
+            actionLabel="開く"
+          >
+            <Kpi
+              value={s ? (s.pendingCount ? `申込 ${s.pendingCount}件` : `受付中 ${s.openDayCount}日`) : '—'}
+              sub={
+                s
+                  ? s.pendingCount
+                    ? '予約タブで承認してください'
+                    : s.nextOpenDate
+                      ? `次は ${shortDate(s.nextOpenDate)}`
+                      : '受付中の日はありません'
+                  : '読み込み中…'
+              }
+              mutedIfZero={!s?.pendingCount && s?.openDayCount === 0}
+            />
+          </StatusCard>
+
           <StatusCard
             accent="teal"
             icon={<MessageSquare size={20} />}

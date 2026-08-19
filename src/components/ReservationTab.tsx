@@ -1,8 +1,16 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { db, getReservationTimeStep, DEFAULT_RESERVATION_TIME_STEP, type CustomerSummary } from '../lib/db'
+import {
+  db,
+  decideReservation,
+  getPendingReservations,
+  getReservationTimeStep,
+  DEFAULT_RESERVATION_TIME_STEP,
+  type CustomerSummary,
+  type PendingReservation,
+} from '../lib/db'
 import { fmtCurrency, fmtDate, fmtDateTime, fmtBizTime } from '../lib/format'
 import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
-import { Play, Clock, Plus, Minus, Sparkles, AlertTriangle } from '../icons'
+import { Play, Clock, Plus, Minus, Sparkles, AlertTriangle, Check, Close } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
 import GanttTimeline from './GanttTimeline'
@@ -22,6 +30,8 @@ interface Reservation {
   更新日時: string
   converted: boolean   // 接客開始済み
   キャンセル済: boolean // 予約キャンセル（履歴として残す）
+  status: 'pending' | 'confirmed' | 'rejected'  // お客様の申込は承認まで pending
+  source: 'staff' | 'customer'                  // どちら発の予約か
 }
 
 interface PricingEntry {
@@ -139,9 +149,11 @@ function durationLabel(min: number): string {
 
 export default function ReservationTab({
   castName,
+  isAdmin = false,
   onStartSession,
 }: {
   castName: string
+  isAdmin?: boolean
   onStartSession?: (preset: SessionPreset) => void
 }) {
   const [list, setList] = useState<Reservation[]>([])
@@ -168,6 +180,11 @@ export default function ReservationTab({
   const [knownNames, setKnownNames] = useState<string[]>([])
   // 時刻入力の刻み（秒）。管理タブ → 店舗設定で変更できる
   const [timeStep, setTimeStep] = useState(DEFAULT_RESERVATION_TIME_STEP)
+  // お客様からの申込（管理者だけに見せる）
+  const [pending, setPending] = useState<PendingReservation[]>([])
+  const [pendingBusy, setPendingBusy] = useState('')          // 処理中の申込 id
+  const [rejecting, setRejecting] = useState<PendingReservation | null>(null)
+  const [rejectNote, setRejectNote] = useState('')
   const toast = useToast()
 
   // フォームを開いている間、入力内容を下書きとして保持
@@ -267,11 +284,77 @@ export default function ReservationTab({
     else setErr(r.error)
   }, [])
 
+  // お客様からの申込。管理者だけが読み込む
+  const loadPending = useCallback(async () => {
+    if (!isAdmin) {
+      setPending([])
+      return
+    }
+    try {
+      const rows = await getPendingReservations()
+      setPending(rows)
+      // 承認する前に出禁の人だと気づけるようにしておく
+      const names = Array.from(new Set(rows.map((r) => r.customerName).filter(Boolean)))
+      if (names.length) {
+        const results = await Promise.all(names.map((n) => db.call<BlMatch[]>('checkBlacklist', n)))
+        setBlMatches((prev) => {
+          const next = new Map(prev)
+          names.forEach((n, i) => {
+            const r = results[i]
+            next.set(n, r.ok ? r.data || [] : [])
+          })
+          return next
+        })
+      }
+    } catch {
+      // 申込一覧が読めなくても予約タブ本体は使えるままにする
+      setPending([])
+    }
+  }, [isAdmin])
+
+  const reloadAll = useCallback(() => {
+    load()
+    loadPending()
+  }, [load, loadPending])
+
   useEffect(() => {
     load()
   }, [load])
 
-  useRealtimeReservations(load)
+  useEffect(() => {
+    loadPending()
+  }, [loadPending])
+
+  useRealtimeReservations(reloadAll)
+
+  async function approvePending(p: PendingReservation) {
+    setPendingBusy(p.id)
+    try {
+      await decideReservation(p.id, true)
+      toast.show(`${p.customerName}様の予約を確定しました`)
+      reloadAll()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setPendingBusy('')
+    }
+  }
+
+  async function rejectPending() {
+    if (!rejecting) return
+    setPendingBusy(rejecting.id)
+    try {
+      await decideReservation(rejecting.id, false, rejectNote.trim())
+      toast.show(`${rejecting.customerName}様の申込をお断りしました`)
+      setRejecting(null)
+      setRejectNote('')
+      reloadAll()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setPendingBusy('')
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -436,6 +519,66 @@ export default function ReservationTab({
       <datalist id="res-known-customers">
         {knownNames.map((n) => <option key={n} value={n} />)}
       </datalist>
+
+      {/* お客様が予約ページから送ってきた申込。承認するまで枠は押さえたままになる */}
+      {isAdmin && pending.length > 0 && (
+        <div className="card pending-card">
+          <div className="pending-head">
+            <span className="pending-title">お客様からの申込</span>
+            <span className="pending-count">{pending.length}件</span>
+          </div>
+          <div className="pending-list">
+            {pending.map((p) => {
+              const bl = blMatches.get(p.customerName) || []
+              const busy = pendingBusy === p.id
+              return (
+                <div key={p.id} className="pending-item">
+                  <div className="pending-item-main">
+                    <div className="pending-when">
+                      {fmtDateTime(p.startsAt)}
+                      {p.slotNo && <span className="pending-slot">枠{p.slotNo}</span>}
+                    </div>
+                    <div className="pending-who">
+                      <strong>{p.customerName || '（名前なし）'}</strong>
+                      <span className="muted"> → {p.castName || 'フリー'}</span>
+                    </div>
+                    <div className="pending-meta muted small">
+                      申込 {fmtDateTime(p.createdAt)} ／ 予約番号 {p.publicCode}
+                      {p.contactEmail && <> ／ {p.contactEmail}</>}
+                    </div>
+                    {p.note && <div className="pending-note">{p.note}</div>}
+                    {bl.length > 0 && (
+                      <div className="pending-bl">
+                        <AlertTriangle size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                        出禁リストに載っています{bl[0].reason ? `（${bl[0].reason}）` : ''}
+                      </div>
+                    )}
+                  </div>
+                  <div className="pending-actions">
+                    <button
+                      className="btn-primary pending-approve"
+                      disabled={busy}
+                      onClick={() => approvePending(p)}
+                    >
+                      <Check size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                      {busy ? '...' : '承認'}
+                    </button>
+                    <button
+                      className="btn-secondary pending-reject"
+                      disabled={busy}
+                      onClick={() => { setRejecting(p); setRejectNote('') }}
+                    >
+                      <Close size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+                      却下
+                    </button>
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="card filter-card">
         <div className="filter-actions">
           <button
@@ -450,7 +593,7 @@ export default function ReservationTab({
           >
             自分のみ
           </button>
-          <button className="btn-secondary" onClick={load} disabled={loading}>
+          <button className="btn-secondary" onClick={reloadAll} disabled={loading}>
             {loading ? '...' : '更新'}
           </button>
         </div>
@@ -497,6 +640,11 @@ export default function ReservationTab({
       {filtered.map((r) => (
         <div key={r.reservation_id} className={`res-card${r.キャンセル済 ? ' is-cancelled' : ''}`}>
           <div className="res-header">
+            {r.status === 'pending' && <span className="badge badge-pending">申込中</span>}
+            {r.status === 'rejected' && <span className="badge badge-rejected">お断り</span>}
+            {r.source === 'customer' && r.status === 'confirmed' && (
+              <span className="badge badge-from-customer">お客様申込</span>
+            )}
             {r.converted && <span className="badge badge-converted">接客開始済み</span>}
             {r.キャンセル済 && <span className="badge badge-cancelled">キャンセル済</span>}
             <span className="res-datetime">{fmtDateTime(r.予約日時)}</span>
@@ -840,6 +988,36 @@ export default function ReservationTab({
             </button>
             <button className="btn-danger" onClick={confirmDelete} disabled={busy}>
               {busy ? '削除中...' : '削除する'}
+            </button>
+          </div>
+        </Modal>
+      )}
+
+      {rejecting && (
+        <Modal onClose={() => !pendingBusy && setRejecting(null)}>
+          <h3>申込をお断りする</h3>
+          <p className="muted">
+            {rejecting.customerName}様 / {rejecting.castName || 'フリー'} / {fmtDateTime(rejecting.startsAt)}
+          </p>
+          <div className="form-group">
+            <label className="form-label">お客様に伝える理由（任意）</label>
+            <input
+              type="text"
+              className="form-input"
+              value={rejectNote}
+              onChange={(e) => setRejectNote(e.target.value)}
+              placeholder="例: 満席のため / 当日は営業をお休みします"
+            />
+            <p className="muted small" style={{ marginTop: 4 }}>
+              空欄でも構いません。書いた内容はお客様の予約状況ページに表示されます。
+            </p>
+          </div>
+          <div className="modal-actions">
+            <button className="btn-secondary" onClick={() => setRejecting(null)} disabled={!!pendingBusy}>
+              やめる
+            </button>
+            <button className="btn-danger" onClick={rejectPending} disabled={!!pendingBusy}>
+              {pendingBusy ? '処理中...' : 'お断りする'}
             </button>
           </div>
         </Modal>

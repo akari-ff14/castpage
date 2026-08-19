@@ -23,4 +23,13 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     autoRefreshToken: true,         // 期限切れ前に自動更新
     detectSessionInUrl: true,       // マジックリンク後のURLハッシュを自動検出
   },
+  global: {
+    // API レスポンスをブラウザキャッシュに載せない。
+    //
+    // PostgREST は Cache-Control を返さないので、ブラウザが独自判断でキャッシュできてしまう。
+    // 実際に 2026-08-19、スキーマ変更中に一時的に返った HTTP 300 が
+    // 各自のブラウザに残り、サーバーを直した後も予約タブがエラー表示のままになった。
+    // 常に最新を取りに行くのが業務データの正しい扱いなので、明示的に無効化する。
+    fetch: (input, init) => fetch(input, { ...init, cache: 'no-store' }),
+  },
 })

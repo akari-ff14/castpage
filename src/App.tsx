@@ -173,6 +173,7 @@ function Dashboard({
           {route === 'reservation' && (
             <ReservationTab
               castName={castName}
+              isAdmin={isAdmin}
               onStartSession={(preset) => {
                 setSessionPreset(preset)
                 setRoute('session')

@@ -336,3 +336,126 @@
   background: var(--teal);
   color: var(--bg);
 }
+
+/* ============================================================
+   お客様からの申込（管理者だけに見える承認セクション）
+   ============================================================ */
+
+/* 申込中バッジ。承認するまで枠は押さえたままなので、一覧でも目立たせる */
+.badge-pending {
+  background: var(--purple-bg);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+}
+
+.badge-rejected {
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--red);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+}
+
+.badge-from-customer {
+  background: var(--green-bg);
+  color: var(--green);
+  border: 1px solid var(--green-border);
+}
+
+.pending-card {
+  border-left: 3px solid var(--purple);
+}
+
+.pending-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+
+.pending-title {
+  font-weight: 700;
+  font-size: var(--fs-md);
+}
+
+.pending-count {
+  font-size: var(--fs-xs);
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--purple-bg);
+  color: var(--purple);
+  border: 1px solid var(--purple-border);
+}
+
+.pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.pending-item {
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface2);
+}
+
+.pending-item-main {
+  flex: 1 1 240px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pending-when {
+  font-variant-numeric: tabular-nums;
+  color: var(--gold);
+  font-size: var(--fs-sm);
+}
+
+.pending-slot {
+  margin-left: var(--space-2);
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.pending-who {
+  font-size: var(--fs-md);
+}
+
+.pending-note {
+  margin-top: var(--space-1);
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  font-size: var(--fs-sm);
+}
+
+.pending-bl {
+  margin-top: var(--space-1);
+  font-size: var(--fs-sm);
+  color: var(--red);
+}
+
+.pending-actions {
+  flex: none;
+  display: flex;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.pending-approve,
+.pending-reject {
+  width: auto;
+  padding: var(--space-2) var(--space-4);
+  white-space: nowrap;
+}
+
+.pending-reject {
+  color: var(--red);
+}

@@ -72,7 +72,13 @@ export interface ReservationShape {
   更新日時: string
   converted: boolean   // 接客開始済み（タイムラインから非表示にする）
   キャンセル済: boolean // 予約キャンセル（履歴として残すがタイムライン・次回予約からは除外）
+  status: ReservationStatus  // 店内で入れた予約は confirmed。お客様の申込は承認されるまで pending
+  source: ReservationSource  // staff = 店内で入力 / customer = お客様が公開ページから申込
 }
+
+// 予約の状態。店内で入れた予約は最初から confirmed で、これまでの運用と何も変わらない。
+export type ReservationStatus = 'pending' | 'confirmed' | 'rejected'
+export type ReservationSource = 'staff' | 'customer'
 
 // 予約フォームで顧客名を入れた時に出す来店サマリー
 export interface CustomerVisitBrief {
@@ -318,7 +324,7 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 export async function getReservations(): Promise<ReservationShape[]> {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, status, source, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
@@ -334,6 +340,8 @@ export async function getReservations(): Promise<ReservationShape[]> {
     更新日時: r.updated_at,
     converted: !!r.converted_at,
     キャンセル済: !!r.cancelled,
+    status: (r.status as ReservationStatus) || 'confirmed',
+    source: (r.source as ReservationSource) || 'staff',
   }))
 }
 
@@ -749,7 +757,7 @@ export async function addReservation(payload: {
       note: payload.note || '',
       cancelled: !!payload.cancelled,
     })
-    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, cancelled, status, source, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .single()
   if (error) throw error
   return {
@@ -765,6 +773,9 @@ export async function addReservation(payload: {
     更新日時: data.updated_at,
     converted: false,
     キャンセル済: !!data.cancelled,
+    // 店内で入れた予約は最初から確定扱い（カラム既定値と同じ）
+    status: (data.status as ReservationStatus) || 'confirmed',
+    source: (data.source as ReservationSource) || 'staff',
   }
 }
 
@@ -815,6 +826,194 @@ export async function updateReservation(payload: {
 export async function deleteReservation(reservationId: string): Promise<void> {
   const { error } = await supabase.from('reservations').delete().eq('id', reservationId)
   if (error) throw error
+}
+
+// ============================================================
+// API: 予約の受付日設定（管理者）
+// ============================================================
+// 「この日、予約受付開始」の実体。1営業日 = 1行。
+// 公開すると、お客様の予約ページにその日が現れる。
+// 受付キャストは日ごとに選ぶので、これが実質の出勤登録も兼ねる。
+
+export const DEFAULT_SLOT_TIMES = ['21:00', '22:10', '23:20']
+
+export interface ReservationDay {
+  businessDate: string        // 'YYYY-MM-DD'
+  isOpen: boolean             // 公開する = お客様側に現れる
+  acceptFrom: string | null   // ISO。この時刻を過ぎると申し込める
+  acceptUntil: string | null  // ISO。null なら枠1の開始時刻で締切
+  slotTimes: string[]         // ['21:00','22:10','23:20']
+  note: string                // お客様側に表示するひとこと
+  castIds: string[]           // この日に枠を出すキャスト
+}
+
+export async function getReservationDays(fromDate: string, toDate: string): Promise<ReservationDay[]> {
+  const [daysRes, castsRes] = await Promise.all([
+    supabase
+      .from('reservation_days')
+      .select('business_date, is_open, accept_from, accept_until, slot_times, note')
+      .gte('business_date', fromDate)
+      .lte('business_date', toDate)
+      .order('business_date', { ascending: false }),
+    supabase
+      .from('reservation_day_casts')
+      .select('business_date, cast_id')
+      .gte('business_date', fromDate)
+      .lte('business_date', toDate),
+  ])
+  if (daysRes.error) throw daysRes.error
+  if (castsRes.error) throw castsRes.error
+
+  const castsByDate = new Map<string, string[]>()
+  for (const row of castsRes.data || []) {
+    const arr = castsByDate.get(row.business_date) || []
+    arr.push(row.cast_id)
+    castsByDate.set(row.business_date, arr)
+  }
+
+  return (daysRes.data || []).map((d) => ({
+    businessDate: d.business_date,
+    isOpen: !!d.is_open,
+    acceptFrom: d.accept_from,
+    acceptUntil: d.accept_until,
+    slotTimes: Array.isArray(d.slot_times) && d.slot_times.length
+      ? (d.slot_times as string[])
+      : [...DEFAULT_SLOT_TIMES],
+    note: d.note || '',
+    castIds: castsByDate.get(d.business_date) || [],
+  }))
+}
+
+export async function saveReservationDay(payload: ReservationDay): Promise<void> {
+  const date = payload.businessDate
+  if (!date) throw new Error('営業日を選んでください')
+
+  const slots = (payload.slotTimes || []).map((s) => s.trim()).filter(Boolean)
+  if (!slots.length) throw new Error('枠の開始時刻を1つ以上入れてください')
+  if (slots.length > 3) throw new Error('枠は3つまでです')
+  for (const s of slots) {
+    if (!/^\d{1,2}:\d{2}$/.test(s)) throw new Error(`枠の時刻「${s}」は HH:MM の形で入れてください`)
+  }
+  if (payload.isOpen && !payload.castIds?.length) {
+    throw new Error('受付するキャストを1人以上選んでください')
+  }
+
+  const { error } = await supabase.from('reservation_days').upsert(
+    {
+      business_date: date,
+      is_open: !!payload.isOpen,
+      accept_from: payload.acceptFrom || null,
+      accept_until: payload.acceptUntil || null,
+      slot_times: slots,
+      note: payload.note || '',
+    },
+    { onConflict: 'business_date' },
+  )
+  if (error) throw error
+
+  // 受付キャストは差分を取らず総入れ替え。1日あたり数行なので単純さを取る
+  const { error: delErr } = await supabase
+    .from('reservation_day_casts')
+    .delete()
+    .eq('business_date', date)
+  if (delErr) throw delErr
+
+  const ids = Array.from(new Set(payload.castIds || []))
+  if (ids.length) {
+    const { error: insErr } = await supabase
+      .from('reservation_day_casts')
+      .insert(ids.map((cast_id) => ({ business_date: date, cast_id })))
+    if (insErr) throw insErr
+  }
+}
+
+export async function deleteReservationDay(businessDate: string): Promise<void> {
+  // お客様の申込が入っている日は消させない。消すと申込がどの日のものか辿れなくなる
+  const { count, error: cErr } = await supabase
+    .from('reservations')
+    .select('id', { count: 'exact', head: true })
+    .eq('business_date', businessDate)
+    .eq('source', 'customer')
+  if (cErr) throw cErr
+  if (count) {
+    throw new Error('この日はお客様の申込があるため削除できません。受付を閉じてください')
+  }
+
+  const { error } = await supabase.from('reservation_days').delete().eq('business_date', businessDate)
+  if (error) throw error
+}
+
+// ============================================================
+// API: お客様からの申込（管理者の承認画面）
+// ============================================================
+
+export interface PendingReservation {
+  id: string
+  publicCode: string
+  businessDate: string | null
+  slotNo: number | null
+  startsAt: string
+  castName: string
+  customerName: string
+  note: string
+  contactEmail: string | null
+  createdAt: string
+}
+
+// 承認画面は管理者だけが開く。casts の埋め込みは管理者なら全行読めるのでそのまま使う
+export async function getPendingReservations(): Promise<PendingReservation[]> {
+  const { data, error } = await supabase
+    .from('reservations')
+    .select('id, public_code, business_date, slot_no, reserved_at, customer_name, note, contact_email, created_at, cast:casts(name)')
+    .eq('status', 'pending')
+    .eq('cancelled', false)
+    .order('reserved_at', { ascending: true })
+  if (error) throw error
+  return (data || []).map((r) => ({
+    id: r.id,
+    publicCode: r.public_code || '',
+    businessDate: r.business_date,
+    slotNo: r.slot_no,
+    startsAt: r.reserved_at,
+    castName: (r.cast as { name?: string } | null)?.name || '',
+    customerName: r.customer_name || '',
+    note: r.note || '',
+    contactEmail: r.contact_email,
+    createdAt: r.created_at,
+  }))
+}
+
+export interface DecideResult {
+  id: string
+  status: ReservationStatus
+  customerUserId: string | null
+  contactEmail: string | null
+  publicCode: string
+  startsAt: string
+}
+
+// 承認 / 却下。判定と更新は decide_reservation RPC が1トランザクションでやる
+export async function decideReservation(
+  reservationId: string,
+  approve: boolean,
+  note = '',
+): Promise<DecideResult> {
+  const { data, error } = await supabase.rpc('decide_reservation', {
+    p_reservation_id: reservationId,
+    p_approve: approve,
+    p_note: note,
+  })
+  if (error) throw error
+  const r = (data || {}) as Record<string, unknown>
+  if (!r.ok) throw new Error(String(r.error || '処理に失敗しました'))
+  return {
+    id: String(r.id),
+    status: r.status as ReservationStatus,
+    customerUserId: (r.customerUserId as string | null) ?? null,
+    contactEmail: (r.contactEmail as string | null) ?? null,
+    publicCode: String(r.publicCode || ''),
+    startsAt: String(r.startsAt || ''),
+  }
 }
 
 // 予約フォームで顧客名を入力した時に出す来店サマリー（リピート判定用）

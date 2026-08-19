@@ -5,6 +5,7 @@ export type AdminSub =
   | 'room'
   | 'pricing'
   | 'store'
+  | 'days'
   | 'session'
   | 'budget'
   | 'insights'

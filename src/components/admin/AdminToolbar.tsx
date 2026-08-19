@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import {
   ArrowLeft,
+  Calendar,
   DoorOpen,
   MessageSquare,
   Settings,
@@ -25,6 +26,7 @@ const SUBS: SubDef[] = [
   { id: 'room',     label: 'ルーム',     icon: <DoorOpen size={ICON_SIZE} />,      group: 'master' },
   { id: 'pricing',  label: '料金',       icon: <Tag size={ICON_SIZE} />,           group: 'master' },
   { id: 'store',    label: '店舗設定',   icon: <Settings size={ICON_SIZE} />,      group: 'master' },
+  { id: 'days',     label: '受付日',     icon: <Calendar size={ICON_SIZE} />,      group: 'ops' },
   { id: 'session',  label: '接客',       icon: <MessageSquare size={ICON_SIZE} />, group: 'ops' },
   { id: 'budget',   label: '予算',       icon: <Wallet size={ICON_SIZE} />,        group: 'ops' },
   { id: 'insights', label: 'インサイト', icon: <TrendingUp size={ICON_SIZE} />,    group: 'analytics' },
