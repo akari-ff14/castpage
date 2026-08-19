@@ -4,7 +4,7 @@
 // 店内業務のクエリを抱えているので、お客様に配るファイルには入れない。
 // ここから触るのは公開 RPC だけで、テーブルを直接読み書きはしない。
 
-import { supabase } from '../lib/supabase'
+import { supabase } from './supabaseClient'
 
 export type SlotState = 'open' | 'pending' | 'confirmed' | 'closed'
 
@@ -137,5 +137,93 @@ export async function submitReservation(payload: {
     code: String(r.code || ''),
     startsAt: String(r.startsAt || ''),
     slotTime: String(r.slotTime || ''),
+  }
+}
+
+// ============================================================
+// 自分の申し込みを見る
+// ============================================================
+
+export type ReservationStatus = 'pending' | 'confirmed' | 'rejected'
+
+export interface MyReservation {
+  id: string
+  publicCode: string
+  businessDate: string | null
+  slotNo: number | null
+  startsAt: string
+  castName: string
+  customerName: string
+  note: string
+  status: ReservationStatus
+  cancelled: boolean
+  decisionNote: string
+  createdAt: string
+}
+
+function toMyReservation(r: Record<string, unknown>): MyReservation {
+  return {
+    id: String(r.id),
+    publicCode: String(r.public_code || ''),
+    businessDate: (r.business_date as string | null) ?? null,
+    slotNo: r.slot_no == null ? null : Number(r.slot_no),
+    startsAt: String(r.starts_at),
+    castName: String(r.cast_name || ''),
+    customerName: String(r.customer_name || ''),
+    note: String(r.note || ''),
+    status: (r.status as ReservationStatus) || 'pending',
+    cancelled: !!r.cancelled,
+    decisionNote: String(r.decision_note || ''),
+    createdAt: String(r.created_at || ''),
+  }
+}
+
+// この端末で申し込んだ分。匿名アカウントがまだ無ければ null（作りには行かない）
+export async function fetchMyReservations(): Promise<MyReservation[] | null> {
+  const { data: sess } = await supabase.auth.getSession()
+  if (!sess.session) return null
+
+  const { data, error } = await supabase.rpc('get_my_reservations')
+  if (error) throw error
+  return (data || []).map(toMyReservation)
+}
+
+// 予約番号での照会。別の端末やブラウザから確認するときに使う
+export async function lookupByCode(code: string): Promise<MyReservation | null> {
+  const trimmed = code.trim()
+  if (!trimmed) return null
+  const { data, error } = await supabase.rpc('lookup_reservation', { p_code: trimmed })
+  if (error) throw error
+  const rows = (data || []) as Record<string, unknown>[]
+  if (!rows.length) return null
+  return { ...toMyReservation(rows[0]), note: '' }
+}
+
+export async function cancelReservation(id: string): Promise<{ ok: boolean; error?: string }> {
+  const { data, error } = await supabase.rpc('cancel_my_reservation', { p_reservation_id: id })
+  if (error) return { ok: false, error: '取り消せませんでした。もう一度お試しください' }
+  const r = (data || {}) as Record<string, unknown>
+  if (!r.ok) return { ok: false, error: String(r.error || '取り消せませんでした') }
+  return { ok: true }
+}
+
+// 自分の予約が変わったら教えてもらう。承認された瞬間に画面が変わるようにする。
+// 配信は RLS を通るので、届くのは自分の行だけ
+export async function subscribeMyReservations(onChange: () => void): Promise<() => void> {
+  const { data: sess } = await supabase.auth.getSession()
+  const uid = sess.session?.user?.id
+  if (!uid) return () => {}
+
+  const channel = supabase
+    .channel(`akari-book-${uid}`)
+    .on(
+      'postgres_changes',
+      { event: '*', schema: 'public', table: 'reservations', filter: `customer_user_id=eq.${uid}` },
+      () => onChange(),
+    )
+    .subscribe()
+
+  return () => {
+    supabase.removeChannel(channel)
   }
 }

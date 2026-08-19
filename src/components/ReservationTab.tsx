@@ -4,6 +4,7 @@ import {
   decideReservation,
   getPendingReservations,
   getReservationTimeStep,
+  notifyReservationDecision,
   DEFAULT_RESERVATION_TIME_STEP,
   type CustomerSummary,
   type PendingReservation,
@@ -331,6 +332,8 @@ export default function ReservationTab({
     setPendingBusy(p.id)
     try {
       await decideReservation(p.id, true)
+      // 通知は届かなくても確定は済んでいる。だから await はするが結果は問わない
+      await notifyReservationDecision(p.id)
       toast.show(`${p.customerName}様の予約を確定しました`)
       reloadAll()
     } catch (e) {
@@ -345,6 +348,7 @@ export default function ReservationTab({
     setPendingBusy(rejecting.id)
     try {
       await decideReservation(rejecting.id, false, rejectNote.trim())
+      await notifyReservationDecision(rejecting.id)
       toast.show(`${rejecting.customerName}様の申込をお断りしました`)
       setRejecting(null)
       setRejectNote('')

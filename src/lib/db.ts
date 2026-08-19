@@ -992,6 +992,27 @@ export interface DecideResult {
   startsAt: string
 }
 
+// お客様に承認・却下を知らせる（Chrome 通知）。
+//
+// 送れなくても承認そのものは成立しているので、失敗は握りつぶして
+// 呼び出し元には影響させない。通知が届かなくてもお客様は
+// 予約状況ページを開けば最新の状態が分かる。
+export async function notifyReservationDecision(reservationId: string): Promise<{ sent: number } | null> {
+  try {
+    const { data, error } = await supabase.functions.invoke('notify-reservation', {
+      body: { reservationId },
+    })
+    if (error) {
+      console.warn('通知を送れませんでした:', error.message)
+      return null
+    }
+    return { sent: Number((data as { sent?: number } | null)?.sent) || 0 }
+  } catch (e) {
+    console.warn('通知を送れませんでした:', (e as Error).message)
+    return null
+  }
+}
+
 // 承認 / 却下。判定と更新は decide_reservation RPC が1トランザクションでやる
 export async function decideReservation(
   reservationId: string,

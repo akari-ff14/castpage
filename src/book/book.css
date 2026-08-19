@@ -620,3 +620,284 @@ body {
   background: transparent;
   border-color: var(--bk-line2);
 }
+
+/* ---------- 画面の切り替え ---------- */
+
+.bk-nav {
+  display: flex;
+  gap: var(--bk-s2);
+  border-bottom: 1px solid var(--bk-line);
+  margin-top: calc(var(--bk-s5) * -1);
+}
+
+.bk-nav-tab {
+  padding: var(--bk-s3) var(--bk-s4);
+  color: var(--bk-ink-dim);
+  text-decoration: none;
+  font-size: 15px;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+
+.bk-nav-tab:hover {
+  color: var(--bk-ink);
+}
+
+.bk-nav-tab.is-current {
+  color: var(--bk-lamp);
+  border-bottom-color: var(--bk-lamp);
+}
+
+.bk-nav-tab:focus-visible {
+  outline: 2px solid var(--bk-lamp);
+  outline-offset: -2px;
+}
+
+/* ---------- 自分の予約 ---------- */
+
+.bk-sub-h {
+  margin: 0 0 var(--bk-s3);
+  font-family: var(--bk-serif);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--bk-ink-dim);
+  letter-spacing: 0.06em;
+}
+
+.bk-mylist {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s3);
+}
+
+.bk-mycard {
+  padding: var(--bk-s4);
+  border: 1px solid var(--bk-line);
+  border-left-width: 3px;
+  border-radius: 10px;
+  background: var(--bk-surface);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s1);
+}
+
+.bk-mycard-pending { border-left-color: var(--bk-hold); }
+.bk-mycard-confirmed { border-left-color: var(--bk-lamp); }
+.bk-mycard-rejected { border-left-color: var(--bk-full); }
+.bk-mycard-cancelled,
+.bk-mycard-past { border-left-color: var(--bk-line2); opacity: 0.72; }
+
+.bk-mycard-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--bk-s3);
+  flex-wrap: wrap;
+}
+
+.bk-status {
+  font-size: 13px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.bk-status-pending {
+  color: var(--bk-hold);
+  background: var(--bk-hold-bg);
+  border-color: #3a332c;
+}
+
+.bk-status-confirmed {
+  color: var(--bk-lamp);
+  background: var(--bk-lamp-bg);
+  border-color: var(--bk-lamp-dim);
+}
+
+.bk-status-rejected {
+  color: var(--bk-full);
+  background: var(--bk-full-bg);
+  border-color: #452724;
+}
+
+.bk-status-cancelled,
+.bk-status-past {
+  color: var(--bk-ink-faint);
+  border-color: var(--bk-line2);
+}
+
+.bk-mycard-code {
+  font-size: 13px;
+  color: var(--bk-ink-faint);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+}
+
+.bk-mycard-when {
+  font-size: 17px;
+  font-variant-numeric: tabular-nums;
+  margin-top: var(--bk-s1);
+}
+
+.bk-mycard-cast {
+  font-family: var(--bk-serif);
+  color: var(--bk-ink-dim);
+  letter-spacing: 0.04em;
+}
+
+.bk-mycard-name {
+  font-family: var(--bk-sans);
+  font-size: 14px;
+}
+
+.bk-mycard-msg {
+  margin: var(--bk-s2) 0 0;
+  padding: var(--bk-s2) var(--bk-s3);
+  border-radius: 8px;
+  background: var(--bk-ground);
+  border: 1px solid var(--bk-line);
+  color: var(--bk-ink-dim);
+  font-size: 14px;
+}
+
+.bk-mycard-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--bk-s2);
+}
+
+/* ---------- 予約番号での照会 ---------- */
+
+.bk-lookup {
+  padding-top: var(--bk-s5);
+  border-top: 1px solid var(--bk-line);
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+}
+
+.bk-lookup-lead {
+  margin: 0;
+  font-size: 14px;
+  color: var(--bk-ink-dim);
+}
+
+.bk-lookup-row {
+  display: flex;
+  gap: var(--bk-s2);
+}
+
+.bk-lookup-row .bk-input {
+  flex: 1;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.bk-lookup-row .bk-btn {
+  flex: none;
+  width: auto;
+  padding: var(--bk-s3) var(--bk-s5);
+}
+
+.bk-lookup-miss {
+  margin: 0;
+  color: var(--bk-ink-dim);
+  font-size: 14px;
+}
+
+/* ---------- ボタンの追加種類 ---------- */
+
+.bk-btn-danger {
+  background: var(--bk-full-bg);
+  border-color: #452724;
+  color: var(--bk-full);
+}
+
+.bk-btn-danger:hover:not(:disabled) {
+  background: #2e1c1a;
+}
+
+.bk-btn-small {
+  flex: none;
+  padding: var(--bk-s2) var(--bk-s4);
+  font-size: 14px;
+}
+
+.bk-btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.bk-done-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+  margin-top: var(--bk-s2);
+}
+
+@media (min-width: 480px) {
+  .bk-done-actions {
+    flex-direction: row;
+  }
+}
+
+/* ---------- お知らせの受け取り ---------- */
+
+.bk-push {
+  padding: var(--bk-s4);
+  border: 1px solid var(--bk-line);
+  border-radius: 10px;
+  background: var(--bk-surface);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--bk-s2);
+}
+
+.bk-push .bk-sub-h {
+  margin: 0;
+}
+
+.bk-push-lead {
+  margin: 0;
+  font-size: 14px;
+  color: var(--bk-ink-dim);
+}
+
+/* iPhone 向けの案内。できないことを詫びるのではなく、やることを先に書く */
+.bk-push-ios {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+  padding: var(--bk-s3);
+  border-radius: 8px;
+  background: var(--bk-ground);
+  border: 1px solid var(--bk-line);
+  font-size: 14px;
+  color: var(--bk-ink-dim);
+}
+
+.bk-push-ios p {
+  margin: 0;
+}
+
+.bk-push-ios strong {
+  color: var(--bk-ink);
+  font-weight: 600;
+}
+
+.bk-push-share {
+  display: inline-block;
+  margin: 0 4px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--bk-line2);
+  color: var(--bk-lamp);
+}
+
+.bk-push-ios-note {
+  color: var(--bk-ink-faint);
+  font-size: 13px;
+}
