@@ -1,5 +1,10 @@
 import { useEffect, useState } from 'react'
-import { getReservationTimeStep, setReservationTimeStep } from '../../lib/db'
+import {
+  getPublicNotice,
+  getReservationTimeStep,
+  setPublicNotice,
+  setReservationTimeStep,
+} from '../../lib/db'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
 
@@ -17,17 +22,37 @@ export default function StoreSettingsAdmin() {
   const [step, setStep] = useState<number | null>(null)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
+  // 公開ページに出す案内文
+  const [notice, setNotice] = useState('')
+  const [savedNotice, setSavedNotice] = useState('')
+  const [noticeBusy, setNoticeBusy] = useState(false)
   const toast = useToast()
 
   useEffect(() => {
     (async () => {
       try {
         setStep(await getReservationTimeStep())
+        const n = await getPublicNotice()
+        setNotice(n)
+        setSavedNotice(n)
       } catch (e) {
         setErr((e as Error).message)
       }
     })()
   }, [])
+
+  async function saveNotice() {
+    setNoticeBusy(true)
+    try {
+      await setPublicNotice(notice)
+      setSavedNotice(notice)
+      toast.show('案内文を保存しました。お客様のページに反映されます')
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setNoticeBusy(false)
+    }
+  }
 
   async function save(next: number) {
     setBusy(true)
@@ -80,6 +105,34 @@ export default function StoreSettingsAdmin() {
               </select>
             </div>
           ) : null}
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="form-group">
+          <label className="form-label" htmlFor="public-notice">お客様の予約ページに出す案内</label>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            料金、当日の流れ、場所、注意事項など。予約ページの一番上に出ます。
+            空欄にすると何も表示されません。
+          </p>
+          <textarea
+            id="public-notice"
+            className="form-input"
+            rows={7}
+            value={notice}
+            onChange={(e) => setNotice(e.target.value)}
+            placeholder={'例）\n・1枠60分、お一人 8,000円です\n・お時間の5分前にお越しください\n・ご確定後のキャンセルはご予約ページから行えます'}
+          />
+          <div className="store-notice-actions">
+            <button className="btn-primary" onClick={saveNotice} disabled={noticeBusy || notice === savedNotice}>
+              {noticeBusy ? '保存中...' : notice === savedNotice ? '保存済み' : '案内を保存'}
+            </button>
+            {notice !== savedNotice && (
+              <button className="btn-secondary" onClick={() => setNotice(savedNotice)} disabled={noticeBusy}>
+                元に戻す
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

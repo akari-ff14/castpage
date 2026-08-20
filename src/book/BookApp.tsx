@@ -3,6 +3,7 @@ import {
   cancelReservation,
   fetchBookingDays,
   fetchMyReservations,
+  fetchPublicNotice,
   lookupByCode,
   requestChange,
   submitReservation,
@@ -88,6 +89,11 @@ function useHashRoute(): string {
 export default function BookApp() {
   const route = useHashRoute()
   const onMyPage = route.startsWith('/my')
+  const [notice, setNotice] = useState('')
+
+  useEffect(() => {
+    fetchPublicNotice().then(setNotice).catch(() => {})
+  }, [])
 
   return (
     <div className="bk">
@@ -103,6 +109,15 @@ export default function BookApp() {
         <a className={`bk-nav-tab ${onMyPage ? '' : 'is-current'}`} href="#/">空き状況</a>
         <a className={`bk-nav-tab ${onMyPage ? 'is-current' : ''}`} href="#/my">予約の状況</a>
       </nav>
+
+      {/* 店からの案内。書かれていなければ何も出さない */}
+      {notice.trim() && (
+        <section className="bk-notice">
+          {notice.split(/\r?\n/).map((line, i) => (
+            <p key={i}>{line}</p>
+          ))}
+        </section>
+      )}
 
       {onMyPage ? <MyReservations /> : <SlotPicker />}
 

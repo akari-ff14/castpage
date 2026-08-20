@@ -2115,6 +2115,30 @@ export async function setReservationTimeStep(stepSec: number): Promise<void> {
   if (error) throw error
 }
 
+// 公開ページに出す店からの案内文。料金・当日の流れ・注意事項など。
+// 空文字なら公開ページには何も出ない
+export const PUBLIC_NOTICE_KEY = 'public_notice'
+
+export async function getPublicNotice(): Promise<string> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('value')
+    .eq('key', PUBLIC_NOTICE_KEY)
+    .maybeSingle()
+  if (error) throw error
+  return typeof data?.value === 'string' ? data.value : ''
+}
+
+export async function setPublicNotice(text: string): Promise<void> {
+  const { error } = await supabase
+    .from('store_settings')
+    .upsert(
+      { key: PUBLIC_NOTICE_KEY, value: text, updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+  if (error) throw error
+}
+
 // ============================================================
 // AkariApi 互換のディスパッチャ — 既存タブの最小変更で移行
 // ============================================================

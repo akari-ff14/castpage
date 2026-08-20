@@ -287,3 +287,10 @@ export async function requestChange(payload: {
 
   return { ok: true, code: String(r.code || '') }
 }
+
+// 店からの案内文。未設定なら空文字が返る
+export async function fetchPublicNotice(): Promise<string> {
+  const { data, error } = await supabase.rpc('get_public_notice')
+  if (error) return ''
+  return typeof data === 'string' ? data : ''
+}
