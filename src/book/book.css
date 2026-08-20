@@ -922,3 +922,11 @@ body {
   display: flex;
   justify-content: center;
 }
+
+/* 入力欄の下に置く補足。何に使う情報なのかを、その場で伝える */
+.bk-field-hint {
+  margin: calc(var(--bk-s2) * -1) 0 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--bk-ink-faint);
+}

@@ -421,9 +421,14 @@ function SlotPicker() {
                 inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                placeholder="確定のお知らせを受け取る場合"
+                placeholder="店からご連絡が必要なときのため"
               />
             </label>
+
+            <p className="bk-field-hint">
+              確定のお知らせは、この端末への通知と「予約の状況」でお伝えします。
+              メールアドレスは、店からご連絡したいことがあったときにだけ使います。
+            </p>
 
             <label className="bk-field">
               <span className="bk-label">ご要望など<em className="bk-opt">任意</em></span>
