@@ -844,11 +844,22 @@ export interface ReservationDay {
   acceptUntil: string | null  // ISO。null なら枠1の開始時刻で締切
   slotTimes: string[]         // ['21:00','22:10','23:20']
   note: string                // お客様側に表示するひとこと
-  castIds: string[]           // この日に枠を出すキャスト
+  castIds: string[]           // この日に出るキャスト（ここに無い人はお休み）
+  blocks: SlotBlock[]         // 出るけれど都合が悪い枠
+}
+
+// 「このキャストのこの枠だけ受付を止める」1マス分
+export interface SlotBlock {
+  castId: string
+  slotNo: number
+}
+
+export function blockKey(castId: string, slotNo: number): string {
+  return `${castId}:${slotNo}`
 }
 
 export async function getReservationDays(fromDate: string, toDate: string): Promise<ReservationDay[]> {
-  const [daysRes, castsRes] = await Promise.all([
+  const [daysRes, castsRes, blocksRes] = await Promise.all([
     supabase
       .from('reservation_days')
       .select('business_date, is_open, accept_from, accept_until, slot_times, note')
@@ -860,15 +871,28 @@ export async function getReservationDays(fromDate: string, toDate: string): Prom
       .select('business_date, cast_id')
       .gte('business_date', fromDate)
       .lte('business_date', toDate),
+    supabase
+      .from('reservation_day_blocks')
+      .select('business_date, cast_id, slot_no')
+      .gte('business_date', fromDate)
+      .lte('business_date', toDate),
   ])
   if (daysRes.error) throw daysRes.error
   if (castsRes.error) throw castsRes.error
+  if (blocksRes.error) throw blocksRes.error
 
   const castsByDate = new Map<string, string[]>()
   for (const row of castsRes.data || []) {
     const arr = castsByDate.get(row.business_date) || []
     arr.push(row.cast_id)
     castsByDate.set(row.business_date, arr)
+  }
+
+  const blocksByDate = new Map<string, SlotBlock[]>()
+  for (const row of blocksRes.data || []) {
+    const arr = blocksByDate.get(row.business_date) || []
+    arr.push({ castId: row.cast_id, slotNo: Number(row.slot_no) })
+    blocksByDate.set(row.business_date, arr)
   }
 
   return (daysRes.data || []).map((d) => ({
@@ -881,6 +905,7 @@ export async function getReservationDays(fromDate: string, toDate: string): Prom
       : [...DEFAULT_SLOT_TIMES],
     note: d.note || '',
     castIds: castsByDate.get(d.business_date) || [],
+    blocks: blocksByDate.get(d.business_date) || [],
   }))
 }
 
@@ -911,19 +936,38 @@ export async function saveReservationDay(payload: ReservationDay): Promise<void>
   )
   if (error) throw error
 
-  // 受付キャストは差分を取らず総入れ替え。1日あたり数行なので単純さを取る
+  // 出勤キャストと止めた枠は差分を取らず総入れ替え。1日あたり数行なので単純さを取る
+  const ids = Array.from(new Set(payload.castIds || []))
+
   const { error: delErr } = await supabase
     .from('reservation_day_casts')
     .delete()
     .eq('business_date', date)
   if (delErr) throw delErr
 
-  const ids = Array.from(new Set(payload.castIds || []))
   if (ids.length) {
     const { error: insErr } = await supabase
       .from('reservation_day_casts')
       .insert(ids.map((cast_id) => ({ business_date: date, cast_id })))
     if (insErr) throw insErr
+  }
+
+  const { error: delBlockErr } = await supabase
+    .from('reservation_day_blocks')
+    .delete()
+    .eq('business_date', date)
+  if (delBlockErr) throw delBlockErr
+
+  // お休みにしたキャストの分は捨てる（出ない人の枠を止めても意味がない）
+  const slotCount = slots.length
+  const blocks = (payload.blocks || []).filter(
+    (b) => ids.includes(b.castId) && b.slotNo >= 1 && b.slotNo <= slotCount,
+  )
+  if (blocks.length) {
+    const { error: insBlockErr } = await supabase
+      .from('reservation_day_blocks')
+      .insert(blocks.map((b) => ({ business_date: date, cast_id: b.castId, slot_no: b.slotNo })))
+    if (insBlockErr) throw insBlockErr
   }
 }
 

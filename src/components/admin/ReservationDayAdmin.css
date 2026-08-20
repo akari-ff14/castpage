@@ -119,29 +119,97 @@
   padding: 0;
 }
 
-.rday-cast-grid {
+/* 誰のどの枠を出すかのマス目。
+   行の左のチェックがお休み、マスひとつひとつが枠の受付可否 */
+.rday-grid {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
+  flex-direction: column;
+  gap: var(--space-1);
 }
 
-.rday-cast-item {
+.rday-grid-head,
+.rday-grid-row {
+  display: grid;
+  grid-template-columns: 7.5em repeat(3, 1fr);
+  gap: var(--space-1);
+  align-items: center;
+}
+
+.rday-grid-head {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.rday-grid-corner {
+  text-align: left;
+}
+
+.rday-grid-slot-label {
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+.rday-grid-name {
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  padding: var(--space-2) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface2);
-  cursor: pointer;
   font-size: var(--fs-sm);
+  cursor: pointer;
+  min-width: 0;
 }
 
-.rday-cast-item:has(input:checked) {
-  border-color: var(--gold);
-  color: var(--text);
+.rday-grid-name span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.rday-cast-item input {
+.rday-grid-name input {
   margin: 0;
+  flex: none;
+}
+
+.rday-grid-row.is-off .rday-grid-name span {
+  color: var(--text-dim);
+  text-decoration: line-through;
+}
+
+.rday-cell {
+  padding: var(--space-2) var(--space-1);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--green-border);
+  background: var(--green-bg);
+  color: var(--green);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.rday-cell.is-blocked {
+  border-color: var(--red-border);
+  background: var(--red-bg);
+  color: var(--red);
+}
+
+.rday-cell:disabled {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* カードに出す「受付なし」の一覧 */
+.rday-blocks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+}
+
+.rday-block {
+  padding: 1px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
 }

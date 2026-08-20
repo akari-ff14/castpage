@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  blockKey,
   DEFAULT_SLOT_TIMES,
   deleteReservationDay,
   getReservationDays,
@@ -90,7 +91,8 @@ interface FormState {
   acceptUntil: string     // datetime-local
   slotTimes: string[]
   note: string
-  castIds: string[]
+  offCastIds: string[]    // お休みのキャスト。チェックが付いた人が休み
+  blocked: Set<string>    // 止めた枠。blockKey(castId, slotNo) の集合
   isNew: boolean
 }
 
@@ -103,7 +105,9 @@ function emptyForm(businessDate: string): FormState {
     acceptUntil: '',
     slotTimes: [...DEFAULT_SLOT_TIMES],
     note: '',
-    castIds: [],
+    // 新しい日は「全員出勤」から始める。休む人にだけチェックを付けてもらう
+    offCastIds: [],
+    blocked: new Set(),
     isNew: true,
   }
 }
@@ -163,6 +167,8 @@ export default function ReservationDayAdmin() {
   }
 
   function openEdit(d: ReservationDay) {
+    // 保存されているのは「出る人」。画面は「休む人」で扱うので裏返す
+    const offs = casts.filter((c) => !d.castIds.includes(c.id)).map((c) => c.id)
     setForm({
       businessDate: d.businessDate,
       isOpen: d.isOpen,
@@ -170,7 +176,8 @@ export default function ReservationDayAdmin() {
       acceptUntil: toLocalDT(d.acceptUntil),
       slotTimes: d.slotTimes.length ? [...d.slotTimes] : [...DEFAULT_SLOT_TIMES],
       note: d.note,
-      castIds: [...d.castIds],
+      offCastIds: offs,
+      blocked: new Set(d.blocks.map((b) => blockKey(b.castId, b.slotNo))),
       isNew: false,
     })
     setFormOpen(true)
@@ -179,6 +186,14 @@ export default function ReservationDayAdmin() {
   async function save() {
     setBusy(true)
     try {
+      const workingIds = casts.filter((c) => !form.offCastIds.includes(c.id)).map((c) => c.id)
+      const blocks = Array.from(form.blocked)
+        .map((k) => {
+          const [castId, slot] = k.split(':')
+          return { castId, slotNo: Number(slot) }
+        })
+        .filter((b) => workingIds.includes(b.castId))
+
       await saveReservationDay({
         businessDate: form.businessDate,
         isOpen: form.isOpen,
@@ -186,7 +201,8 @@ export default function ReservationDayAdmin() {
         acceptUntil: fromLocalDT(form.acceptUntil),
         slotTimes: form.slotTimes,
         note: form.note,
-        castIds: form.castIds,
+        castIds: workingIds,
+        blocks,
       })
       toast.show(form.isOpen ? '受付日を保存しました。お客様のページに表示されます' : '受付日を保存しました')
       setFormOpen(false)
@@ -247,9 +263,24 @@ export default function ReservationDayAdmin() {
               </span>
             </div>
             <div className="rday-line">
-              <span className="muted">キャスト</span>
-              <span>{names.length ? names.join('・') : <span className="err-inline">未設定</span>}</span>
+              <span className="muted">出勤</span>
+              <span>{names.length ? names.join('・') : <span className="err-inline">全員お休み</span>}</span>
             </div>
+            {d.blocks.length > 0 && (
+              <div className="rday-line">
+                <span className="muted">受付なし</span>
+                <span className="rday-blocks">
+                  {d.blocks
+                    .slice()
+                    .sort((a, b) => a.slotNo - b.slotNo)
+                    .map((b) => (
+                      <span key={blockKey(b.castId, b.slotNo)} className="rday-block">
+                        {castNameById.get(b.castId) || '?'} {d.slotTimes[b.slotNo - 1] || `枠${b.slotNo}`}
+                      </span>
+                    ))}
+                </span>
+              </div>
+            )}
             <div className="rday-line">
               <span className="muted">受付</span>
               <span>
@@ -399,25 +430,69 @@ export default function ReservationDayAdmin() {
           </div>
 
           <div className="form-group">
-            <label className="form-label">この日、枠を出すキャスト</label>
-            <div className="rday-cast-grid">
-              {casts.map((c) => (
-                <label key={c.id} className="rday-cast-item">
-                  <input
-                    type="checkbox"
-                    checked={form.castIds.includes(c.id)}
-                    onChange={(e) => setForm((f) => ({
-                      ...f,
-                      castIds: e.target.checked
-                        ? [...f.castIds, c.id]
-                        : f.castIds.filter((id) => id !== c.id),
-                    }))}
-                  />
-                  {c.name}
-                </label>
-              ))}
-            </div>
-            {!casts.length && <p className="muted small">有効なキャストがいません</p>}
+            <label className="form-label">この日に出す枠</label>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              お休みの人は左のチェックを入れてください。出勤する人でも、
+              都合の悪い枠はマスを押すと受付を止められます。
+            </p>
+
+            {!casts.length ? (
+              <p className="muted small">有効なキャストがいません</p>
+            ) : (
+              <div className="rday-grid">
+                <div className="rday-grid-head">
+                  <span className="rday-grid-corner">お休み</span>
+                  {form.slotTimes.map((t, i) => (
+                    <span key={i} className="rday-grid-slot-label">{t || `枠${i + 1}`}</span>
+                  ))}
+                </div>
+
+                {casts.map((c) => {
+                  const off = form.offCastIds.includes(c.id)
+                  return (
+                    <div key={c.id} className={`rday-grid-row${off ? ' is-off' : ''}`}>
+                      <label className="rday-grid-name">
+                        <input
+                          type="checkbox"
+                          checked={off}
+                          onChange={(e) => setForm((f) => ({
+                            ...f,
+                            offCastIds: e.target.checked
+                              ? [...f.offCastIds, c.id]
+                              : f.offCastIds.filter((id) => id !== c.id),
+                          }))}
+                        />
+                        <span>{c.name}</span>
+                      </label>
+
+                      {form.slotTimes.map((_, i) => {
+                        const slotNo = i + 1
+                        const key = blockKey(c.id, slotNo)
+                        const blocked = form.blocked.has(key)
+                        return (
+                          <button
+                            key={i}
+                            type="button"
+                            className={`rday-cell${blocked ? ' is-blocked' : ''}`}
+                            disabled={off}
+                            aria-pressed={!blocked && !off}
+                            aria-label={`${c.name} ${form.slotTimes[i]} ${off ? 'お休み' : blocked ? '受付しない' : '受付する'}`}
+                            onClick={() => setForm((f) => {
+                              const next = new Set(f.blocked)
+                              if (next.has(key)) next.delete(key)
+                              else next.add(key)
+                              return { ...f, blocked: next }
+                            })}
+                          >
+                            {off ? '—' : blocked ? '受付なし' : '受付'}
+                          </button>
+                        )
+                      })}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div className="form-group">
