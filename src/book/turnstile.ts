@@ -10,7 +10,7 @@
 
 // Cloudflare のダッシュボードで発行するサイトキー。公開情報なのでコードに置いてよい。
 // 対になるシークレットキーは Supabase の Authentication → Attack Protection に入れる。
-export const TURNSTILE_SITE_KEY = ''
+export const TURNSTILE_SITE_KEY = '0x4AAAAAAEWM115OOhUl_LXV'
 
 const SCRIPT_URL = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit'
 
