@@ -974,3 +974,22 @@ body {
   outline: 2px solid var(--bk-lamp);
   outline-offset: 2px;
 }
+
+/* 変更申請のシートは空き状況のマス目が入るので広めに取る */
+.bk-sheet-wide {
+  max-width: 620px;
+}
+
+.bk-change-day {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+}
+
+.bk-change-day .bk-day-title {
+  font-size: 16px;
+}
+
+.bk-mycard-actions {
+  gap: var(--bk-s2);
+}

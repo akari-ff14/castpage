@@ -337,7 +337,11 @@ export default function ReservationTab({
       await decideReservation(p.id, true)
       // 通知は届かなくても確定は済んでいる。だから await はするが結果は問わない
       await notifyReservationDecision(p.id)
-      toast.show(`${p.customerName}様の予約を確定しました`)
+      toast.show(
+        p.changeFrom
+          ? `${p.customerName}様の日時変更を確定しました`
+          : `${p.customerName}様の予約を確定しました`,
+      )
       reloadAll()
     } catch (e) {
       toast.show((e as Error).message, 'err')
@@ -583,6 +587,15 @@ export default function ReservationTab({
               return (
                 <div key={p.id} className="pending-item">
                   <div className="pending-item-main">
+                    {p.changeFrom && (
+                      <div className="pending-change">
+                        <span className="badge badge-change">日時変更の申請</span>
+                        <span className="pending-change-from">
+                          {fmtDateTime(p.changeFrom.startsAt)}
+                          {p.changeFrom.castName && ` ${p.changeFrom.castName}`} から
+                        </span>
+                      </div>
+                    )}
                     <div className="pending-when">
                       {fmtDateTime(p.startsAt)}
                       {p.slotNo && <span className="pending-slot">枠{p.slotNo}</span>}
@@ -1072,10 +1085,16 @@ export default function ReservationTab({
 
       {rejecting && (
         <Modal onClose={() => !pendingBusy && setRejecting(null)}>
-          <h3>申込をお断りする</h3>
+          <h3>{rejecting.changeFrom ? '変更をお断りする' : '申込をお断りする'}</h3>
           <p className="muted">
             {rejecting.customerName}様 / {rejecting.castName || 'フリー'} / {fmtDateTime(rejecting.startsAt)}
           </p>
+          {rejecting.changeFrom && (
+            <p className="muted">
+              お断りすると、お客様のご予約は
+              {fmtDateTime(rejecting.changeFrom.startsAt)} のまま変わりません。
+            </p>
+          )}
           <div className="form-group">
             <label className="form-label">お客様に伝える理由（任意）</label>
             <input

@@ -177,6 +177,7 @@ export interface MyReservation {
   cancelled: boolean
   decisionNote: string
   createdAt: string
+  changeFromId: string | null   // 変更申請なら、変更元の予約 id
 }
 
 function toMyReservation(r: Record<string, unknown>): MyReservation {
@@ -193,6 +194,7 @@ function toMyReservation(r: Record<string, unknown>): MyReservation {
     cancelled: !!r.cancelled,
     decisionNote: String(r.decision_note || ''),
     createdAt: String(r.created_at || ''),
+    changeFromId: (r.change_from_id as string | null) ?? null,
   }
 }
 
@@ -244,4 +246,23 @@ export async function subscribeMyReservations(onChange: () => void): Promise<() 
   return () => {
     supabase.removeChannel(channel)
   }
+}
+
+// 日時やキャストの変更を申し込む。すぐには変わらず、店が承認して初めて入れ替わる
+export async function requestChange(payload: {
+  reservationId: string
+  businessDate: string
+  castId: string
+  slotNo: number
+}): Promise<{ ok: boolean; error?: string; code?: string }> {
+  const { data, error } = await supabase.rpc('request_change', {
+    p_reservation_id: payload.reservationId,
+    p_business_date: payload.businessDate,
+    p_cast_id: payload.castId,
+    p_slot_no: payload.slotNo,
+  })
+  if (error) return { ok: false, error: '送信できませんでした。もう一度お試しください' }
+  const r = (data || {}) as Record<string, unknown>
+  if (!r.ok) return { ok: false, error: String(r.error || '送信できませんでした') }
+  return { ok: true, code: String(r.code || '') }
 }

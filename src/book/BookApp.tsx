@@ -4,6 +4,7 @@ import {
   fetchBookingDays,
   fetchMyReservations,
   lookupByCode,
+  requestChange,
   submitReservation,
   subscribeMyReservations,
   type BookingDay,
@@ -350,42 +351,10 @@ function SlotPicker() {
               </p>
             )}
 
-            <div className="bk-casts">
-              {day.casts.map((cast) => (
-                <div key={cast.castId} className="bk-cast">
-                  <div className="bk-cast-name">{cast.castName}</div>
-                  <div className="bk-slots">
-                    {cast.slots.map((slot) => {
-                      const canBook = day.isAccepting && slot.state === 'open'
-                      // 受付開始前は空き状況を伏せる。金色で「空き」と出すと押せそうに見えて、
-                      // 押せないボタンを前にした人が困る。時刻だけ並べて予告にとどめる
-                      const shown = day.isAccepting ? slot.state : 'closed'
-                      return (
-                        <button
-                          key={slot.slotNo}
-                          type="button"
-                          className={`bk-slot bk-slot-${shown}`}
-                          disabled={!canBook}
-                          // ボタンの中は時刻と状態しか書いていないので、読み上げでは
-                          // どのキャストの枠か分からなくなる。ここで補う
-                          aria-label={
-                            day.isAccepting
-                              ? `${cast.castName} ${slotRange(slot.slotTime)} ${STATE_LABEL[slot.state]}`
-                              : `${cast.castName} ${slotRange(slot.slotTime)} 受付開始前`
-                          }
-                          onClick={() => openForm(day, cast.castId, cast.castName, slot)}
-                        >
-                          <span className="bk-slot-time">{slot.slotTime}</span>
-                          {day.isAccepting && (
-                            <span className="bk-slot-state">{STATE_LABEL[slot.state]}</span>
-                          )}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <CastSlots
+              day={day}
+              onPick={(castId, castName, slot) => openForm(day, castId, castName, slot)}
+            />
           </section>
         ))}
 
@@ -511,6 +480,54 @@ function SlotPicker() {
   )
 }
 
+// キャスト × 枠のマス目。新規の申し込みと、日時の変更申請で同じものを使う
+function CastSlots({
+  day,
+  onPick,
+}: {
+  day: BookingDay
+  onPick: (castId: string, castName: string, slot: PublicSlot) => void
+}) {
+  return (
+    <div className="bk-casts">
+      {day.casts.map((cast) => (
+        <div key={cast.castId} className="bk-cast">
+          <div className="bk-cast-name">{cast.castName}</div>
+          <div className="bk-slots">
+            {cast.slots.map((slot) => {
+              const canBook = day.isAccepting && slot.state === 'open'
+              // 受付開始前は空き状況を伏せる。金色で「空き」と出すと押せそうに見えて、
+              // 押せないボタンを前にした人が困る。時刻だけ並べて予告にとどめる
+              const shown = day.isAccepting ? slot.state : 'closed'
+              return (
+                <button
+                  key={slot.slotNo}
+                  type="button"
+                  className={`bk-slot bk-slot-${shown}`}
+                  disabled={!canBook}
+                  // ボタンの中は時刻と状態しか書いていないので、読み上げでは
+                  // どのキャストの枠か分からなくなる。ここで補う
+                  aria-label={
+                    day.isAccepting
+                      ? `${cast.castName} ${slotRange(slot.slotTime)} ${STATE_LABEL[slot.state]}`
+                      : `${cast.castName} ${slotRange(slot.slotTime)} 受付開始前`
+                  }
+                  onClick={() => onPick(cast.castId, cast.castName, slot)}
+                >
+                  <span className="bk-slot-time">{slot.slotTime}</span>
+                  {day.isAccepting && (
+                    <span className="bk-slot-state">{STATE_LABEL[slot.state]}</span>
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 // ============================================================
 // 自分の予約の状況
 // ============================================================
@@ -541,6 +558,11 @@ function MyReservations() {
   const [looking, setLooking] = useState(false)
   const [cancelling, setCancelling] = useState<MyReservation | null>(null)
   const [busy, setBusy] = useState(false)
+  // 日時の変更申請
+  const [changing, setChanging] = useState<MyReservation | null>(null)
+  const [changeDays, setChangeDays] = useState<BookingDay[] | null>(null)
+  const [changeErr, setChangeErr] = useState('')
+  const [changeDone, setChangeDone] = useState(false)
 
   const load = useCallback(async () => {
     setErr('')
@@ -589,6 +611,43 @@ function MyReservations() {
     }
   }
 
+  // 変更したい予約が決まったら、空いている枠を読み込んで選んでもらう
+  function openChange(r: MyReservation) {
+    setChanging(r)
+    setChangeErr('')
+    setChangeDone(false)
+    setChangeDays(null)
+    const today = jstToday()
+    fetchBookingDays(today, addDays(today, FUTURE_DAYS))
+      .then(setChangeDays)
+      .catch(() => {
+        setChangeDays([])
+        setChangeErr('空き状況を読み込めませんでした')
+      })
+  }
+
+  async function pickNewSlot(castId: string, slot: PublicSlot) {
+    if (!changing) return
+    setBusy(true)
+    setChangeErr('')
+    const r = await requestChange({
+      reservationId: changing.id,
+      businessDate: slot.businessDate,
+      castId,
+      slotNo: slot.slotNo,
+    })
+    setBusy(false)
+    if (!r.ok) {
+      setChangeErr(r.error || '申し込めませんでした')
+      // 枠が埋まっていた場合に備えて最新に描き直す
+      const today = jstToday()
+      fetchBookingDays(today, addDays(today, FUTURE_DAYS)).then(setChangeDays).catch(() => {})
+      return
+    }
+    setChangeDone(true)
+    load()
+  }
+
   async function doCancel() {
     if (!cancelling) return
     setBusy(true)
@@ -633,7 +692,15 @@ function MyReservations() {
         {active.length > 0 && (
           <section className="bk-mylist">
             {active.map((r) => (
-              <MyCard key={r.id} r={r} onCancel={() => setCancelling(r)} />
+              <MyCard
+                key={r.id}
+                r={r}
+                isChange={!!r.changeFromId}
+                // この予約について変更を申請中なら、二重に申請させない
+                changeRequested={active.some((x) => x.changeFromId === r.id && x.status === 'pending')}
+                onCancel={() => setCancelling(r)}
+                onChange={() => openChange(r)}
+              />
             ))}
           </section>
         )}
@@ -682,6 +749,63 @@ function MyReservations() {
           )}
         </section>
       </main>
+
+      {changing && (
+        <div className="bk-overlay" onClick={() => !busy && setChanging(null)}>
+          <div className="bk-sheet bk-sheet-wide" onClick={(e) => e.stopPropagation()}>
+            {changeDone ? (
+              <>
+                <h2 className="bk-sheet-title">変更を申し込みました</h2>
+                <p className="bk-done-lead">
+                  店が確認して、あらためてお返事します。
+                  <strong>お返事があるまで、今のご予約はそのままです。</strong>
+                  変更後の枠も押さえてありますので、そのままお待ちください。
+                </p>
+                <div className="bk-sheet-actions">
+                  <button className="bk-btn bk-btn-primary" onClick={() => setChanging(null)}>
+                    閉じる
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h2 className="bk-sheet-title">日時を変更する</h2>
+                <p className="bk-sheet-sub">
+                  今のご予約　{changing.businessDate && labelDay(changing.businessDate)}
+                  {rangeFromStart(changing.startsAt)}　{changing.castName}
+                </p>
+                <p className="bk-field-hint">
+                  変更したい枠を選んでください。すぐには変わらず、店が承認してから入れ替わります。
+                </p>
+
+                {changeErr && <p className="bk-form-err">{changeErr}</p>}
+                {changeDays === null && <p className="bk-loading">空き状況を読み込んでいます…</p>}
+                {changeDays?.length === 0 && !changeErr && (
+                  <p className="bk-lookup-miss">いま受付している日がありません。</p>
+                )}
+
+                {changeDays?.map((day) => (
+                  <div key={day.businessDate} className="bk-change-day">
+                    <div className="bk-day-head">
+                      <h3 className="bk-day-title">{labelDay(day.businessDate)}</h3>
+                    </div>
+                    <CastSlots
+                      day={day}
+                      onPick={(castId, _castName, slot) => !busy && pickNewSlot(castId, slot)}
+                    />
+                  </div>
+                ))}
+
+                <div className="bk-sheet-actions">
+                  <button className="bk-btn bk-btn-ghost" onClick={() => setChanging(null)} disabled={busy}>
+                    やめる
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {cancelling && (
         <div className="bk-overlay" onClick={() => !busy && setCancelling(null)}>
@@ -795,12 +919,26 @@ function PushSetting() {
   )
 }
 
-function MyCard({ r, onCancel }: { r: MyReservation; onCancel?: () => void }) {
+function MyCard({
+  r,
+  isChange = false,
+  changeRequested = false,
+  onCancel,
+  onChange,
+}: {
+  r: MyReservation
+  isChange?: boolean
+  changeRequested?: boolean
+  onCancel?: () => void
+  onChange?: () => void
+}) {
   const state = shownState(r)
   return (
     <article className={`bk-mycard bk-mycard-${state}`}>
       <div className="bk-mycard-head">
-        <span className={`bk-status bk-status-${state}`}>{SHOWN_LABEL[state]}</span>
+        <span className={`bk-status bk-status-${state}`}>
+          {isChange && state === 'pending' ? '変更を確認中' : SHOWN_LABEL[state]}
+        </span>
         <span className="bk-mycard-code">{r.publicCode}</span>
       </div>
 
@@ -809,23 +947,42 @@ function MyCard({ r, onCancel }: { r: MyReservation; onCancel?: () => void }) {
       </div>
       <div className="bk-mycard-cast">{r.castName || 'フリー'}　<span className="bk-mycard-name">{r.customerName} 様</span></div>
 
-      {state === 'pending' && (
+      {state === 'pending' && !isChange && (
         <p className="bk-mycard-msg">店からのお返事をお待ちください。確定するとここの表示が変わります。</p>
+      )}
+      {state === 'pending' && isChange && (
+        <p className="bk-mycard-msg">
+          こちらの枠への変更を申し込んでいます。承認されるとこの枠に切り替わり、
+          もとのご予約は取り消されます。
+        </p>
       )}
       {state === 'confirmed' && (
         <p className="bk-mycard-msg">お待ちしております。当日はお気をつけてお越しください。</p>
       )}
       {state === 'rejected' && (
         <p className="bk-mycard-msg">
-          {r.decisionNote || '申し訳ありません。今回はお受けできませんでした。'}
+          {isChange
+            ? r.decisionNote || '変更はお受けできませんでした。もとのご予約はそのままです。'
+            : r.decisionNote || '申し訳ありません。今回はお受けできませんでした。'}
         </p>
       )}
+      {changeRequested && (
+        <p className="bk-mycard-msg">別の枠への変更を申し込み中です。お返事をお待ちください。</p>
+      )}
 
-      {onCancel && (state === 'pending' || state === 'confirmed') && (
+      {(onCancel || onChange) && (state === 'pending' || state === 'confirmed') && (
         <div className="bk-mycard-actions">
-          <button className="bk-btn bk-btn-ghost bk-btn-small" onClick={onCancel}>
-            取り消す
-          </button>
+          {/* 変更申請そのものは「変更」できない。取り下げて出し直してもらう */}
+          {onChange && !isChange && !changeRequested && (
+            <button className="bk-btn bk-btn-ghost bk-btn-small" onClick={onChange}>
+              日時を変更する
+            </button>
+          )}
+          {onCancel && (
+            <button className="bk-btn bk-btn-ghost bk-btn-small" onClick={onCancel}>
+              取り消す
+            </button>
+          )}
         </div>
       )}
     </article>

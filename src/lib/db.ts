@@ -1002,18 +1002,40 @@ export interface PendingReservation {
   note: string
   contactEmail: string | null
   createdAt: string
+  // 日時の変更申請なら、変更前の予約の内容。新規申込なら null
+  changeFrom: { startsAt: string; castName: string } | null
 }
 
 // 承認画面は管理者だけが開く。casts の埋め込みは管理者なら全行読めるのでそのまま使う
 export async function getPendingReservations(): Promise<PendingReservation[]> {
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, public_code, business_date, slot_no, reserved_at, customer_name, note, contact_email, created_at, cast:casts(name)')
+    .select('id, public_code, business_date, slot_no, reserved_at, customer_name, note, contact_email, created_at, change_from_id, cast:casts(name)')
     .eq('status', 'pending')
     .eq('cancelled', false)
     .order('reserved_at', { ascending: true })
   if (error) throw error
-  return (data || []).map((r) => ({
+
+  const rows = data || []
+
+  // 変更申請には「今のご予約」を並べて出したいので、変更元だけまとめて引く。
+  // change_from_id には外部キーを張っていないため、埋め込みではなく別クエリで取る
+  const fromIds = rows.map((r) => r.change_from_id).filter(Boolean) as string[]
+  const fromById = new Map<string, { startsAt: string; castName: string }>()
+  if (fromIds.length) {
+    const { data: fromRows } = await supabase
+      .from('reservations')
+      .select('id, reserved_at, cast:casts(name)')
+      .in('id', fromIds)
+    for (const f of fromRows || []) {
+      fromById.set(f.id, {
+        startsAt: f.reserved_at,
+        castName: (f.cast as { name?: string } | null)?.name || '',
+      })
+    }
+  }
+
+  return rows.map((r) => ({
     id: r.id,
     publicCode: r.public_code || '',
     businessDate: r.business_date,
@@ -1024,6 +1046,7 @@ export async function getPendingReservations(): Promise<PendingReservation[]> {
     note: r.note || '',
     contactEmail: r.contact_email,
     createdAt: r.created_at,
+    changeFrom: r.change_from_id ? fromById.get(r.change_from_id) ?? null : null,
   }))
 }
 
