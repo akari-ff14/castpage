@@ -115,6 +115,17 @@ async function ensureSession(captchaToken?: string): Promise<void> {
   }
 }
 
+
+// 店に「申込が入った / 取り消された / 変更申請が来た」を知らせる。
+// 届かなくてもお客様の操作は成立しているので、失敗は黙って飲み込む
+async function notifyStaff(reservationId: string, kind: 'new' | 'cancel' | 'change'): Promise<void> {
+  try {
+    await supabase.functions.invoke('notify-staff', { body: { reservationId, kind } })
+  } catch {
+    // 通知が飛ばなくても、店は予約タブを開けば気づける
+  }
+}
+
 export interface SubmitResult {
   ok: boolean
   error?: string
@@ -150,6 +161,9 @@ export async function submitReservation(payload: {
 
   const r = (data || {}) as Record<string, unknown>
   if (!r.ok) return { ok: false, error: String(r.error || '送信できませんでした') }
+
+  await notifyStaff(String(r.id), 'new')
+
   return {
     ok: true,
     code: String(r.code || ''),
@@ -224,6 +238,10 @@ export async function cancelReservation(id: string): Promise<{ ok: boolean; erro
   if (error) return { ok: false, error: '取り消せませんでした。もう一度お試しください' }
   const r = (data || {}) as Record<string, unknown>
   if (!r.ok) return { ok: false, error: String(r.error || '取り消せませんでした') }
+
+  // 確定していた予約が消えたことに店が気づけないと、当日その時間を空けて待つことになる
+  await notifyStaff(id, 'cancel')
+
   return { ok: true }
 }
 
@@ -264,5 +282,8 @@ export async function requestChange(payload: {
   if (error) return { ok: false, error: '送信できませんでした。もう一度お試しください' }
   const r = (data || {}) as Record<string, unknown>
   if (!r.ok) return { ok: false, error: String(r.error || '送信できませんでした') }
+
+  await notifyStaff(String(r.id), 'change')
+
   return { ok: true, code: String(r.code || '') }
 }

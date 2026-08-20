@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react'
 import { db } from '../lib/db'
 import { fmtCurrency } from '../lib/format'
+import {
+  disableStaffPush,
+  enableStaffPush,
+  getStaffPushState,
+  sendStaffTestPush,
+  type StaffPushState,
+} from '../lib/push'
 import { applyTheme, getStoredTheme, type ThemeName } from '../lib/theme'
-import { Settings as SettingsIcon, ListChecks, Crown } from '../icons'
+import { Settings as SettingsIcon, ListChecks, Crown, Mail } from '../icons'
 import { useToast } from './Toast'
 import './SettingsTab.css'
 
@@ -84,6 +91,8 @@ export default function SettingsTab({ castName }: { castName: string }) {
         </button>
       </div>
 
+      <StaffPushCard />
+
       <div className="card">
         <div className="card-title">
           <ListChecks size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
@@ -123,6 +132,104 @@ export default function SettingsTab({ castName }: { castName: string }) {
         </p>
       </div>
 
+      {toast.element}
+    </div>
+  )
+}
+
+// お客様の申込・取り消し・変更申請を、この端末の通知で受け取る設定。
+// 予約タブを開いていないと気づけない、という状態をなくすためのもの。
+function StaffPushCard() {
+  const [state, setState] = useState<StaffPushState | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const toast = useToast()
+
+  useEffect(() => {
+    getStaffPushState().then(setState)
+  }, [])
+
+  async function turnOn() {
+    setBusy(true)
+    setErr('')
+    const r = await enableStaffPush()
+    setState(r.state)
+    if (!r.ok && r.error) setErr(r.error)
+    else if (r.ok) toast.show('この端末でお知らせを受け取ります')
+    setBusy(false)
+  }
+
+  async function turnOff() {
+    setBusy(true)
+    setState(await disableStaffPush())
+    setBusy(false)
+  }
+
+  async function test() {
+    setBusy(true)
+    setErr('')
+    const r = await sendStaffTestPush()
+    if (!r.ok) setErr(r.error || '送信できませんでした')
+    else toast.show('テストのお知らせを送りました')
+    setBusy(false)
+  }
+
+  if (state === null) return null
+
+  return (
+    <div className="card">
+      <div className="card-title">
+        <Mail size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+        お客様からのお知らせ
+      </div>
+
+      {state === 'unsupported' && (
+        <p className="muted small">このブラウザでは通知を扱えません。</p>
+      )}
+
+      {state === 'ios-needs-pwa' && (
+        <p className="muted small">
+          iPhone・iPad でお知らせを受け取るには、共有ボタンから「ホーム画面に追加」して、
+          追加したアイコンから開いてください。
+        </p>
+      )}
+
+      {state === 'denied' && (
+        <p className="muted small">
+          このサイトからの通知がブラウザ側で止められています。
+          アドレスバーの左にある鍵のマークから通知を「許可」に変えてください。
+        </p>
+      )}
+
+      {state === 'off' && (
+        <>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            新しい申込・お客様の取り消し・日時変更の申請を、この端末にお知らせします。
+            予約タブを開いていなくても届くので、承認漏れを防げます。
+          </p>
+          <button className="btn-primary" onClick={turnOn} disabled={busy}>
+            {busy ? '設定中...' : 'お知らせを受け取る'}
+          </button>
+        </>
+      )}
+
+      {state === 'on' && (
+        <>
+          <p className="muted small" style={{ marginTop: 0 }}>
+            この端末でお知らせを受け取ります。管理者は全件、キャストは自分あての予約が届きます。
+          </p>
+          <div className="settings-push-actions">
+            <button className="btn-secondary" onClick={test} disabled={busy}>
+              テスト送信
+            </button>
+            <button className="btn-secondary" onClick={turnOff} disabled={busy}>
+              受け取りを止める
+            </button>
+          </div>
+        </>
+      )}
+
+      {err && <p className="err small">{err}</p>}
       {toast.element}
     </div>
   )
