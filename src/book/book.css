@@ -930,3 +930,47 @@ body {
   line-height: 1.7;
   color: var(--bk-ink-faint);
 }
+
+/* ---------- お名前（ご一緒の方を＋で追加） ---------- */
+
+.bk-names {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+}
+
+.bk-name-row {
+  display: flex;
+  gap: var(--bk-s2);
+  align-items: center;
+}
+
+.bk-name-row .bk-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.bk-name-btn {
+  flex: none;
+  width: 46px;
+  align-self: stretch;
+  border-radius: 8px;
+  border: 1px solid var(--bk-line2);
+  background: var(--bk-surface2);
+  color: var(--bk-ink-dim);
+  font-family: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.bk-name-btn:hover {
+  border-color: var(--bk-lamp-dim);
+  color: var(--bk-lamp);
+}
+
+.bk-name-btn:focus-visible {
+  outline: 2px solid var(--bk-lamp);
+  outline-offset: 2px;
+}

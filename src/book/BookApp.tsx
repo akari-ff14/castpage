@@ -17,6 +17,9 @@ import './book.css'
 // 受付日を探す範囲。店は先の日程まで開けることがあるので広めに取る
 const FUTURE_DAYS = 120
 
+// 1枠に入れるお名前の上限。1時間1組なので、店内アプリの10名より控えめにする
+const MAX_NAMES = 5
+
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 
 function jstToday(): string {
@@ -134,7 +137,8 @@ function SlotPicker() {
   const [picked, setPicked] = useState<Picked | null>(null)
   const [done, setDone] = useState<Done | null>(null)
 
-  const [name, setName] = useState('')
+  // ご本人とご一緒の方。1行目が必須で、2行目以降は空なら捨てる
+  const [names, setNames] = useState<string[]>([''])
   const [email, setEmail] = useState('')
   const [note, setNote] = useState('')
   const [formErr, setFormErr] = useState('')
@@ -198,8 +202,9 @@ function SlotPicker() {
 
   async function send() {
     if (!picked) return
-    const trimmed = name.trim()
-    if (!trimmed) {
+    // 店内アプリ側は「、」「,」区切りで複数名を展開するので、その形に合わせる
+    const cleaned = names.map((n) => n.trim()).filter(Boolean)
+    if (!cleaned.length) {
       setFormErr('お名前を入力してください')
       return
     }
@@ -226,7 +231,7 @@ function SlotPicker() {
       businessDate: picked.day.businessDate,
       castId: picked.castId,
       slotNo: picked.slot.slotNo,
-      customerName: trimmed,
+      customerName: cleaned.join('、'),
       email: email.trim() || undefined,
       note: note.trim() || undefined,
       captchaToken: captcha || undefined,
@@ -250,7 +255,7 @@ function SlotPicker() {
       slotTime: picked.slot.slotTime,
     })
     setPicked(null)
-    setName('')
+    setNames([''])
     setEmail('')
     setNote('')
     load()
@@ -401,17 +406,49 @@ function SlotPicker() {
               {labelDay(picked.day.businessDate)}　{slotRange(picked.slot.slotTime)}　{picked.castName}
             </p>
 
-            <label className="bk-field">
+            <div className="bk-field">
               <span className="bk-label">お名前<em className="bk-req">必須</em></span>
-              <input
-                className="bk-input"
-                type="text"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="キャラクター名"
-                autoFocus
-              />
-            </label>
+              <div className="bk-names">
+                {names.map((n, i) => (
+                  <div key={i} className="bk-name-row">
+                    <input
+                      className="bk-input"
+                      type="text"
+                      value={n}
+                      onChange={(e) => setNames((list) => list.map((v, j) => (j === i ? e.target.value : v)))}
+                      placeholder={i === 0 ? 'キャラクター名' : `ご一緒の方 ${i}`}
+                      autoComplete="off"
+                      aria-label={i === 0 ? 'お名前' : `ご一緒の方 ${i} のお名前`}
+                      autoFocus={i === 0}
+                    />
+                    {i === names.length - 1 && names.length < MAX_NAMES ? (
+                      <button
+                        type="button"
+                        className="bk-name-btn"
+                        onClick={() => setNames((list) => [...list, ''])}
+                        aria-label="ご一緒の方を追加"
+                        title="ご一緒の方を追加"
+                      >
+                        ＋
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="bk-name-btn"
+                        onClick={() => setNames((list) => list.filter((_, j) => j !== i))}
+                        aria-label="この欄を削除"
+                        title="この欄を削除"
+                      >
+                        −
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+              <p className="bk-field-hint">
+                ご一緒にお越しの方がいれば「＋」で追加してください（{MAX_NAMES}名まで）。
+              </p>
+            </div>
 
             <label className="bk-field">
               <span className="bk-label">メールアドレス<em className="bk-opt">任意</em></span>
