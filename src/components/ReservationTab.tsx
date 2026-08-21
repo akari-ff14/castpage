@@ -759,7 +759,9 @@ export default function ReservationTab({
             )}
           </div>
           <div className="res-actions">
-            {onStartSession && !r.converted && !r.キャンセル済 && (
+            {/* 確定した予約からだけ接客を始められる。
+                承認前の申込やお断りしたものは、一覧には残すがここからは開始させない */}
+            {onStartSession && r.status === 'confirmed' && !r.converted && !r.キャンセル済 && (
               <button
                 className="btn-res-start"
                 onClick={() => onStartSession({ customerName: r.顧客名, room: r.ルーム, reservationId: r.reservation_id })}

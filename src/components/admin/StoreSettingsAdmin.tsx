@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react'
 import {
   getPublicNotice,
   getReservationTimeStep,
+  hasDiscordWebhook,
+  setDiscordWebhook,
   setPublicNotice,
   setReservationTimeStep,
 } from '../../lib/db'
@@ -136,6 +138,90 @@ export default function StoreSettingsAdmin() {
         </div>
       </div>
 
+      <DiscordCard />
+
+      {toast.element}
+    </div>
+  )
+}
+
+// Discord への予約通知（任意）。
+// Webhook URL は保管庫に入るので、ここでは「設定済みかどうか」しか分からない。
+// 一度保存したら画面には出さず、消したいときは空で保存してもらう。
+function DiscordCard() {
+  const [configured, setConfigured] = useState<boolean | null>(null)
+  const [url, setUrl] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [err, setErr] = useState('')
+  const toast = useToast()
+
+  useEffect(() => {
+    hasDiscordWebhook().then(setConfigured).catch(() => setConfigured(false))
+  }, [])
+
+  async function save(next: string) {
+    setBusy(true)
+    setErr('')
+    try {
+      await setDiscordWebhook(next)
+      setConfigured(next !== '')
+      setUrl('')
+      toast.show(next ? 'Discord に通知を送る設定にしました' : 'Discord への通知を止めました')
+    } catch (e) {
+      setErr((e as Error).message)
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (configured === null) return null
+
+  return (
+    <div className="card">
+      <div className="form-group">
+        <label className="form-label" htmlFor="discord-url">Discord に予約のお知らせを送る（任意）</label>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          新しい申込・日時変更の申請・お客様の取り消しを、店の Discord に流します。
+          設定しなければ何も送りません。
+        </p>
+
+        {configured ? (
+          <>
+            <p className="c-green small" style={{ margin: '8px 0' }}>設定済みです。</p>
+            <p className="muted small" style={{ marginTop: 0 }}>
+              入れ直すときは新しい URL を貼って保存してください。
+              安全のため、保存した URL は画面には出しません。
+            </p>
+          </>
+        ) : (
+          <p className="muted small" style={{ marginTop: 0 }}>
+            Discord のチャンネル設定 → 連携サービス → ウェブフック で作った URL を貼ってください。
+          </p>
+        )}
+
+        <input
+          id="discord-url"
+          className="form-input"
+          type="url"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://discord.com/api/webhooks/..."
+          autoComplete="off"
+        />
+
+        <div className="store-notice-actions">
+          <button className="btn-primary" onClick={() => save(url.trim())} disabled={busy || !url.trim()}>
+            {busy ? '保存中...' : configured ? '入れ直す' : '設定する'}
+          </button>
+          {configured && (
+            <button className="btn-secondary" onClick={() => save('')} disabled={busy}>
+              通知を止める
+            </button>
+          )}
+        </div>
+
+        {err && <p className="err small">{err}</p>}
+      </div>
       {toast.element}
     </div>
   )

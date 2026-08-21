@@ -2140,6 +2140,27 @@ export async function setPublicNotice(text: string): Promise<void> {
 }
 
 // ============================================================
+// API: Discord への予約通知（オプション）
+// ============================================================
+// Webhook URL は知っている人が誰でも投稿できてしまうので、
+// store_settings ではなく Vault に置いてある。
+// 画面からは「設定されているか」しか分からず、URL 自体は読めない。
+
+export async function hasDiscordWebhook(): Promise<boolean> {
+  const { data, error } = await supabase.rpc('has_discord_webhook')
+  if (error) return false
+  return !!data
+}
+
+// 空文字を渡すと通知を止める（保管庫から消す）
+export async function setDiscordWebhook(url: string): Promise<void> {
+  const { data, error } = await supabase.rpc('set_discord_webhook', { p_url: url })
+  if (error) throw error
+  const r = (data || {}) as { ok?: boolean; error?: string }
+  if (!r.ok) throw new Error(r.error || '保存できませんでした')
+}
+
+// ============================================================
 // AkariApi 互換のディスパッチャ — 既存タブの最小変更で移行
 // ============================================================
 
