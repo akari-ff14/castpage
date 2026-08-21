@@ -22,6 +22,12 @@ const FUTURE_DAYS = 120
 // 1枠に入れるお名前の上限。1時間1組なので、店内アプリの10名より控えめにする
 const MAX_NAMES = 5
 
+// 入力の長さ。DB 側 (validate_reservation_input) と同じ値にしておき、
+// 送信してから断られるのではなく、その場で気づけるようにする
+const MAX_NAME_LEN = 100
+const MAX_EMAIL_LEN = 200
+const MAX_NOTE_LEN = 1000
+
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 
 function jstToday(): string {
@@ -225,6 +231,17 @@ function SlotPicker() {
       return
     }
 
+    const joined = cleaned.join('、')
+    if (joined.length > MAX_NAME_LEN) {
+      setFormErr(`お名前が長すぎます（全部で${MAX_NAME_LEN}文字まで）`)
+      return
+    }
+    const mail = email.trim()
+    if (mail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(mail)) {
+      setFormErr('メールアドレスの形をご確認ください')
+      return
+    }
+
     // 人には見えない欄が埋まっている＝自動入力。何が起きたか説明せずに黙って断る
     if (trap) {
       setFormErr('送信できませんでした。時間をおいてもう一度お試しください')
@@ -247,7 +264,7 @@ function SlotPicker() {
       businessDate: picked.day.businessDate,
       castId: picked.castId,
       slotNo: picked.slot.slotNo,
-      customerName: cleaned.join('、'),
+      customerName: joined,
       email: email.trim() || undefined,
       note: note.trim() || undefined,
       captchaToken: captcha || undefined,
@@ -401,6 +418,7 @@ function SlotPicker() {
                       value={n}
                       onChange={(e) => setNames((list) => list.map((v, j) => (j === i ? e.target.value : v)))}
                       placeholder={i === 0 ? 'キャラクター名' : `ご一緒の方 ${i}`}
+                      maxLength={MAX_NAME_LEN}
                       autoComplete="off"
                       aria-label={i === 0 ? 'お名前' : `ご一緒の方 ${i} のお名前`}
                       autoFocus={i === 0}
@@ -442,6 +460,7 @@ function SlotPicker() {
                 inputMode="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                maxLength={MAX_EMAIL_LEN}
                 placeholder="店からご連絡が必要なときのため"
               />
             </label>
@@ -458,6 +477,7 @@ function SlotPicker() {
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
                 rows={3}
+                maxLength={MAX_NOTE_LEN}
                 placeholder="はじめての方はその旨など"
               />
             </label>
