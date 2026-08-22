@@ -19,6 +19,10 @@ import './ReservationDayAdmin.css'
 const PAST_DAYS = 30
 const FUTURE_DAYS = 120
 
+// お客様に配る予約ページ。開発中でも本番の URL を出す
+// （手元の localhost をお客様に伝えてしまわないように）
+const BOOK_URL = 'https://akari-ff14.github.io/castpage/book/'
+
 // ISO(UTC) → datetime-local 用の "YYYY-MM-DDTHH:mm"（JST）
 function toLocalDT(iso: string | null): string {
   if (!iso) return ''
@@ -315,6 +319,8 @@ export default function ReservationDayAdmin() {
         受付開始日時より前は「◯月◯日 ◯時から受付開始」という予告だけが出て、申込ボタンはまだ押せません。
       </p>
 
+      <BookLinkCard />
+
       {err && <p className="err">エラー: {err}</p>}
       {loading && !days.length && <p className="muted">読み込み中...</p>}
 
@@ -540,6 +546,43 @@ export default function ReservationDayAdmin() {
       )}
 
       {toast.element}
+    </div>
+  )
+}
+
+// お客様に配る予約ページへの入り口。
+// 「どこを見せればいいんだっけ」となりがちなので、受付日の設定と同じ画面に置く。
+function BookLinkCard() {
+  const [copied, setCopied] = useState(false)
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(BOOK_URL)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      // クリップボードが使えない環境では、URL を選んでコピーしてもらう
+      setCopied(false)
+    }
+  }
+
+  return (
+    <div className="card booklink-card">
+      <div className="booklink-head">お客様の予約ページ</div>
+      <a className="booklink-url" href={BOOK_URL} target="_blank" rel="noopener noreferrer">
+        {BOOK_URL}
+      </a>
+      <div className="booklink-actions">
+        <a className="btn-secondary booklink-btn" href={BOOK_URL} target="_blank" rel="noopener noreferrer">
+          開いてみる
+        </a>
+        <button className="btn-secondary booklink-btn" onClick={copy}>
+          {copied ? 'コピーしました' : 'URLをコピー'}
+        </button>
+      </div>
+      <p className="muted small booklink-note">
+        このURLをお客様にお伝えください。受付中の日がないときは「ただいま受付している日はありません」と表示されます。
+      </p>
     </div>
   )
 }
