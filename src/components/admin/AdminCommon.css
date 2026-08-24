@@ -275,3 +275,22 @@
 .store-notice-actions .btn-primary:disabled {
   opacity: 0.55;
 }
+
+/* Discord に流れる通知の色見本。Discord 側の embed の帯と同じ色を並べる */
+.discord-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin: var(--space-2) 0 var(--space-3);
+}
+
+.discord-chip {
+  font-size: var(--fs-xs);
+  padding: 1px 8px 1px 6px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--chip);
+  background: var(--surface2);
+  color: var(--text-dim);
+  white-space: nowrap;
+}

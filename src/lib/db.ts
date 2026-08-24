@@ -515,6 +515,7 @@ export async function startSession(payload: {
     }
   }
 
+  notifyShopEvent('start', { sessionId: inserted.id as string })
   return sessionRowToShape(inserted as unknown as SessionRow, pricing)
 }
 
@@ -543,6 +544,7 @@ export async function extendSession(sessionId: string): Promise<SessionShape> {
   if (error) throw error
   const castName = (cur.cast as { name?: string } | null)?.name || ''
   await logActivity('extend', castName, sessionId, cur.customer_names || null, cur.cast_id)
+  notifyShopEvent('extend', { sessionId })
   return sessionRowToShape(data as unknown as SessionRow, pricing)
 }
 
@@ -644,6 +646,7 @@ export async function finishSession(payload: {
 
   const castName = (cur.cast as { name?: string } | null)?.name || ''
   await logActivity('end', castName, payload.sessionId, cur.customer_names || null, cur.cast_id)
+  notifyShopEvent('finish', { sessionId: payload.sessionId })
 
   const basePrice = Number(cur.base_price)
   const optPrice = Number(cur.option_price)
@@ -1094,6 +1097,10 @@ export async function decideReservation(
   if (error) throw error
   const r = (data || {}) as Record<string, unknown>
   if (!r.ok) throw new Error(String(r.error || '処理に失敗しました'))
+  // 承認したときだけ Discord に流す。お断りは店内の判断なので送らない
+  if (approve && r.status === 'confirmed') {
+    notifyShopEvent('confirmed', { reservationId: String(r.id) })
+  }
   return {
     id: String(r.id),
     status: r.status as ReservationStatus,
@@ -2158,6 +2165,29 @@ export async function setDiscordWebhook(url: string): Promise<void> {
   if (error) throw error
   const r = (data || {}) as { ok?: boolean; error?: string }
   if (!r.ok) throw new Error(r.error || '保存できませんでした')
+}
+
+// 店側の動き（予約確定・対応開始・延長・対応終了）を Discord に流す。
+//
+// おまけの通知なので、送れなくても本体の操作は成立している。
+// 承認や接客開始が Discord のせいで失敗したり待たされたりしないよう、
+// 待たずに投げっぱなしにして、失敗は握りつぶす。
+export type ShopEventKind = 'confirmed' | 'start' | 'extend' | 'finish'
+
+export function notifyShopEvent(
+  kind: ShopEventKind,
+  ids: { reservationId?: string; sessionId?: string },
+): void {
+  void (async () => {
+    try {
+      const { error } = await supabase.functions.invoke('notify-shop', {
+        body: { kind, ...ids },
+      })
+      if (error) console.warn('Discord に送れませんでした:', error.message)
+    } catch (e) {
+      console.warn('Discord に送れませんでした:', (e as Error).message)
+    }
+  })()
 }
 
 // ============================================================
