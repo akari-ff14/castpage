@@ -185,6 +185,10 @@ function DiscordCard() {
           店側の動き（予約確定・対応開始・延長・対応終了）を、店の Discord に流します。
           種類ごとに色分けされます。設定しなければ何も送りません。
         </p>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          お客様のお名前と、対応終了時の金額も一緒に送られます。
+          チャンネルは、見せてよい人だけが入れるところにしてください。
+        </p>
         <div className="discord-legend">
           <span className="discord-chip" style={{ '--chip': '#e0b464' } as CSSProperties}>申込</span>
           <span className="discord-chip" style={{ '--chip': '#9aa0d8' } as CSSProperties}>日時変更</span>
