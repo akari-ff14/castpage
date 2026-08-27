@@ -27,6 +27,9 @@ export interface SessionPreset {
   customerName: string
   room: string
   reservationId?: string   // 予約から開始した場合のみ。開始後にその予約をタイムラインから消す
+  presetSlots?: number     // 予約された長さ（30分=1コマ）。予定時間の初期値にする
+  wantService?: string     // お客様が選んだ席（'normal' | 'vip'）。通常/VIP はルームで決まるので、
+  wantServiceLabel?: string //  ここでは希望として見せるだけ。実際の判定は選んだルーム
 }
 
 interface Props {
@@ -62,7 +65,10 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
   const [note, setNote] = useState('')
   // 予約由来の場合だけ保持（preset は mount 直後に親側で null に戻されるため初期値で確保）
   const [reservationId] = useState(preset?.reservationId)
-  const [presetSlots, setPresetSlots] = useState(0)
+  // 予約から来たときは、お客様が申し込んだ長さを最初から入れておく
+  const [presetSlots, setPresetSlots] = useState(preset?.presetSlots || 0)
+  const [wantService] = useState(preset?.wantService || '')
+  const [wantServiceLabel] = useState(preset?.wantServiceLabel || '')
   const [busy, setBusy] = useState(false)
   const [blWarning, setBlWarning] = useState<BlMatch[] | null>(null)
   // 既存顧客名（入力サジェスト用。ローマ字/かな入力の手間軽減）
@@ -107,6 +113,10 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
     presetSlots > 0 && servicePrice
       ? servicePrice.price * numCustomers * presetSlots
       : 0
+
+  // お客様が VIP を希望しているのに通常ルームを選んでいる（またはその逆）。
+  // 止めはしない。席が空いていないこともあるので、判断は店に委ねる
+  const seatMismatch = !!wantService && !!room && wantService !== serviceType
 
   const canSubmit = !busy && !!room && filledCustomerNames.length > 0
   const blocker = !filledCustomerNames.length
@@ -302,6 +312,12 @@ export default function StartSessionForm({ castName, onStarted, preset, onPreset
             })}
           </select>
         </div>
+        {wantService && (
+          <p className={`seat-want ${seatMismatch ? 'is-mismatch' : ''}`}>
+            お客様のご希望は <strong>{wantServiceLabel || wantService}</strong> です。
+            {seatMismatch && ' 今選んでいるルームでは種別が変わります。'}
+          </p>
+        )}
         {room && servicePrice && (
           <div className="step-price-chip">
             <span className={`badge ${serviceType === 'vip' ? 'badge-vip' : 'badge-normal'}`}>

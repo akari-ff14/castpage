@@ -4,6 +4,7 @@ import {
   fetchBookingDays,
   fetchMyReservations,
   fetchPublicNotice,
+  fetchServicePrices,
   lookupByCode,
   requestChange,
   submitReservation,
@@ -11,6 +12,7 @@ import {
   type BookingDay,
   type MyReservation,
   type PublicSlot,
+  type ServicePrice,
 } from './api'
 import { disablePush, enablePush, getPushState, type PushState } from './push'
 import { isTurnstileEnabled, renderTurnstile, type TurnstileHandle } from './turnstile'
@@ -29,6 +31,17 @@ const MAX_EMAIL_LEN = 200
 const MAX_NOTE_LEN = 1000
 
 const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
+
+// お客様が選べるお時間。料金表が30分単位なので、その倍数で並べる
+const DURATIONS = [30, 60] as const
+
+// 店は「40万G」と書くので、こちらもそれに合わせる。
+// 万でちょうど割り切れないときだけ、桁区切りのそのままの数字にする
+function formatGil(n: number): string {
+  const v = Math.round(Number(n) || 0)
+  if (v >= 10000 && v % 10000 === 0) return `${(v / 10000).toLocaleString('ja-JP')}万G`
+  return `${v.toLocaleString('ja-JP')}G`
+}
 
 function jstToday(): string {
   return new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 10)
@@ -65,10 +78,12 @@ function labelDateTime(iso: string | null): string {
   return `${jst.getUTCMonth() + 1}月${jst.getUTCDate()}日 ${String(jst.getUTCHours()).padStart(2, '0')}:${String(jst.getUTCMinutes()).padStart(2, '0')}`
 }
 
-// 枠の終わりの時刻。開始 + 60分（24時をまたぐ日は 25:20 のように続けて書く）
-function slotRange(slotTime: string): string {
+// 枠の終わりの時刻（24時をまたぐ日は 25:20 のように続けて書く）。
+// お客様が30分を選ぶこともあるので、長さは呼ぶ側から渡してもらう
+function slotRange(slotTime: string, durationMin = 60): string {
   const [hh, mm] = slotTime.split(':').map(Number)
-  return `${slotTime} 〜 ${String(hh + 1).padStart(2, '0')}:${String(mm).padStart(2, '0')}`
+  const end = hh * 60 + mm + durationMin
+  return `${slotTime} 〜 ${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`
 }
 
 // 予約の開始時刻から「21:00 〜 22:00」を作る（自分の予約一覧で使う）
@@ -166,6 +181,9 @@ interface Done {
   castName: string
   businessDate: string
   slotTime: string
+  serviceLabel: string
+  durationMin: number
+  price: number
 }
 
 function SlotPicker() {
@@ -176,6 +194,10 @@ function SlotPicker() {
 
   // ご本人とご一緒の方。1行目が必須で、2行目以降は空なら捨てる
   const [names, setNames] = useState<string[]>([''])
+  // お席とお時間。料金表が読めたら、いちばん安いものを最初に選んでおく
+  const [prices, setPrices] = useState<ServicePrice[]>([])
+  const [serviceType, setServiceType] = useState('')
+  const [durationMin, setDurationMin] = useState<number>(60)
   const [email, setEmail] = useState('')
   const [note, setNote] = useState('')
   const [formErr, setFormErr] = useState('')
@@ -205,6 +227,23 @@ function SlotPicker() {
   useEffect(() => {
     load()
   }, [load])
+
+  // 料金は滅多に変わらないので、開いたときに一度だけ取る。
+  // 読めなかったときは選択欄を出さず、通常・60分として申し込めるようにしておく
+  useEffect(() => {
+    fetchServicePrices()
+      .then((list) => {
+        setPrices(list)
+        setServiceType((cur) => cur || list[0]?.key || 'normal')
+      })
+      .catch(() => setServiceType((cur) => cur || 'normal'))
+  }, [])
+
+  // 見積もり = 30分あたりの単価 × 人数 × コマ数。店内アプリの計算と同じ式
+  const unitPrice = prices.find((p) => p.key === serviceType)?.price ?? 0
+  const partySize = Math.max(1, names.map((n) => n.trim()).filter(Boolean).length)
+  const quote = unitPrice * partySize * (durationMin / 30)
+  const serviceLabel = prices.find((p) => p.key === serviceType)?.label ?? ''
 
   function openForm(day: BookingDay, castId: string, castName: string, slot: PublicSlot) {
     setPicked({ day, castId, castName, slot })
@@ -280,6 +319,8 @@ function SlotPicker() {
       castId: picked.castId,
       slotNo: picked.slot.slotNo,
       customerName: joined,
+      serviceType: serviceType || 'normal',
+      durationMin,
       email: email.trim() || undefined,
       note: note.trim() || undefined,
       captchaToken: captcha || undefined,
@@ -301,6 +342,10 @@ function SlotPicker() {
       castName: picked.castName,
       businessDate: picked.day.businessDate,
       slotTime: picked.slot.slotTime,
+      serviceLabel,
+      // 金額と長さは DB が確定させたものを控える。画面の計算とずれたら DB が正
+      durationMin: r.durationMin || durationMin,
+      price: r.price ?? quote,
     })
     setPicked(null)
     setNames([''])
@@ -327,12 +372,24 @@ function SlotPicker() {
             </div>
             <div>
               <dt>時間</dt>
-              <dd>{slotRange(done.slotTime)}</dd>
+              <dd>{slotRange(done.slotTime, done.durationMin)}　（{done.durationMin}分）</dd>
             </div>
             <div>
               <dt>キャスト</dt>
               <dd>{done.castName}</dd>
             </div>
+            {done.serviceLabel && (
+              <div>
+                <dt>お席</dt>
+                <dd>{done.serviceLabel}</dd>
+              </div>
+            )}
+            {done.price > 0 && (
+              <div>
+                <dt>お会計</dt>
+                <dd>{formatGil(done.price)}</dd>
+              </div>
+            )}
           </dl>
 
           <div className="bk-code">
@@ -417,8 +474,55 @@ function SlotPicker() {
           <div className="bk-sheet" onClick={(e) => e.stopPropagation()}>
             <h2 className="bk-sheet-title">お申し込み</h2>
             <p className="bk-sheet-sub">
-              {labelDay(picked.day.businessDate)}　{slotRange(picked.slot.slotTime)}　{picked.castName}
+              {labelDay(picked.day.businessDate)}　{slotRange(picked.slot.slotTime, durationMin)}　{picked.castName}
             </p>
+
+            {prices.length > 0 && (
+              <div className="bk-plan">
+                <div className="bk-field">
+                  <span className="bk-label-row" id="bk-seat-label">お席</span>
+                  <div className="bk-choice" role="radiogroup" aria-labelledby="bk-seat-label">
+                    {prices.map((p) => (
+                      <button
+                        key={p.key}
+                        type="button"
+                        role="radio"
+                        aria-checked={serviceType === p.key}
+                        className={`bk-chip ${serviceType === p.key ? 'is-on' : ''}`}
+                        onClick={() => setServiceType(p.key)}
+                      >
+                        <span className="bk-chip-name">{p.label}</span>
+                        <span className="bk-chip-sub">
+                          {formatGil(p.price * (durationMin / 30))}
+                          <span className="bk-chip-unit"> / お一人</span>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bk-field">
+                  <span className="bk-label-row" id="bk-dur-label">お時間</span>
+                  <div className="bk-choice" role="radiogroup" aria-labelledby="bk-dur-label">
+                    {DURATIONS.map((d) => (
+                      <button
+                        key={d}
+                        type="button"
+                        role="radio"
+                        aria-checked={durationMin === d}
+                        className={`bk-chip ${durationMin === d ? 'is-on' : ''}`}
+                        onClick={() => setDurationMin(d)}
+                      >
+                        <span className="bk-chip-name">{d}分</span>
+                        <span className="bk-chip-sub">
+                          {slotRange(picked.slot.slotTime, d)}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="bk-field">
               <span className="bk-label-row">お名前<em className="bk-req">必須</em></span>
@@ -508,6 +612,17 @@ function SlotPicker() {
                 onChange={(e) => setTrap(e.target.value)}
               />
             </div>
+
+            {prices.length > 0 && quote > 0 && (
+              <p className="bk-quote">
+                <span className="bk-quote-label">お会計の目安</span>
+                <strong className="bk-quote-value">{formatGil(quote)}</strong>
+                <span className="bk-quote-note">
+                  {serviceLabel}・{durationMin}分・{partySize}名
+                  {partySize > 1 && `（お一人 ${formatGil(unitPrice * (durationMin / 30))}）`}
+                </span>
+              </p>
+            )}
 
             <div ref={captchaBox} className="bk-captcha" />
 
@@ -999,6 +1114,14 @@ function MyCard({
         {r.businessDate && labelDay(r.businessDate)}　{rangeFromStart(r.startsAt)}
       </div>
       <div className="bk-mycard-cast">{r.castName || 'フリー'}　<span className="bk-mycard-name">{r.customerName} 様</span></div>
+
+      {(r.serviceLabel || r.durationMin > 0 || r.price > 0) && (
+        <div className="bk-mycard-plan">
+          {r.serviceLabel && <span>{r.serviceLabel}</span>}
+          {r.durationMin > 0 && <span>{r.durationMin}分</span>}
+          {r.price > 0 && <span className="bk-mycard-price">{formatGil(r.price)}</span>}
+        </div>
+      )}
 
       {state === 'pending' && !isChange && (
         <p className="bk-mycard-msg">店からのお返事をお待ちください。確定するとここの表示が変わります。</p>

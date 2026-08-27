@@ -24,6 +24,8 @@ interface Reservation {
   顧客名: string
   予約金額: number
   予約時間: number
+  希望席: string        // お客様が選んだ席のキー。店内で入れた予約は空
+  希望席表示名: string   // 同じものの表示名（通常 / VIP）
   予約日時: string
   ルーム: string
   備考: string
@@ -745,6 +747,20 @@ export default function ReservationTab({
                 <span>{r.ルーム}</span>
               </div>
             )}
+            {/* お客様がご自分で選んだ席と長さ。店内で入れた予約には無い */}
+            {(r.希望席表示名 || r.source === 'customer') && (
+              <div className="res-row">
+                <span className="muted">ご希望</span>
+                <span>
+                  {r.希望席表示名 && (
+                    <span className={`badge ${r.希望席 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
+                      {r.希望席表示名}
+                    </span>
+                  )}
+                  <span style={{ marginLeft: r.希望席表示名 ? 8 : 0 }}>{r.予約時間}分</span>
+                </span>
+              </div>
+            )}
             {r.予約金額 > 0 && (
               <div className="res-row">
                 <span className="muted">金額</span>
@@ -764,7 +780,17 @@ export default function ReservationTab({
             {onStartSession && r.status === 'confirmed' && !r.converted && !r.キャンセル済 && (
               <button
                 className="btn-res-start"
-                onClick={() => onStartSession({ customerName: r.顧客名, room: r.ルーム, reservationId: r.reservation_id })}
+                onClick={() =>
+                  onStartSession({
+                    customerName: r.顧客名,
+                    room: r.ルーム,
+                    reservationId: r.reservation_id,
+                    // 予約された長さを予定時間の初期値にする（30分 = 1コマ）
+                    presetSlots: Math.max(1, Math.round((r.予約時間 || 60) / 30)),
+                    wantService: r.希望席 || undefined,
+                    wantServiceLabel: r.希望席表示名 || undefined,
+                  })
+                }
               >
                 <Play size={12} />
                 接客開始

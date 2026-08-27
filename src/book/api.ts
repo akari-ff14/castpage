@@ -126,12 +126,34 @@ async function notifyStaff(reservationId: string, kind: 'new' | 'cancel' | 'chan
   }
 }
 
+// 接客の種別と、30分あたりの単価。
+// pricing テーブルそのものは店の人しか読めないので、公開してよい分だけを
+// get_public_prices から受け取る。オプションはここには入らない
+export interface ServicePrice {
+  key: string
+  label: string
+  price: number      // 30分あたり・お一人あたり
+}
+
+export async function fetchServicePrices(): Promise<ServicePrice[]> {
+  const { data, error } = await supabase.rpc('get_public_prices')
+  if (error) throw error
+  return ((data || []) as Record<string, unknown>[]).map((r) => ({
+    key: String(r.key),
+    label: String(r.label || r.key),
+    price: Number(r.price) || 0,
+  }))
+}
+
 export interface SubmitResult {
   ok: boolean
   error?: string
   code?: string
   startsAt?: string
   slotTime?: string
+  price?: number
+  serviceType?: string
+  durationMin?: number
 }
 
 export async function submitReservation(payload: {
@@ -139,6 +161,8 @@ export async function submitReservation(payload: {
   castId: string
   slotNo: number
   customerName: string
+  serviceType: string
+  durationMin: number
   email?: string
   note?: string
   captchaToken?: string
@@ -156,6 +180,8 @@ export async function submitReservation(payload: {
     p_customer_name: payload.customerName,
     p_email: payload.email || null,
     p_note: payload.note || '',
+    p_service_type: payload.serviceType,
+    p_duration_min: payload.durationMin,
   })
   if (error) return { ok: false, error: '送信できませんでした。もう一度お試しください' }
 
@@ -169,6 +195,10 @@ export async function submitReservation(payload: {
     code: String(r.code || ''),
     startsAt: String(r.startsAt || ''),
     slotTime: String(r.slotTime || ''),
+    // 金額は DB 側で確定させる。画面の計算とずれたときは DB の方が正
+    price: Number(r.price) || 0,
+    serviceType: String(r.serviceType || ''),
+    durationMin: Number(r.durationMin) || 0,
   }
 }
 
@@ -192,6 +222,10 @@ export interface MyReservation {
   decisionNote: string
   createdAt: string
   changeFromId: string | null   // 変更申請なら、変更元の予約 id
+  serviceType: string           // 店側で入れた予約は空（部屋で決まるため）
+  serviceLabel: string
+  durationMin: number
+  price: number
 }
 
 function toMyReservation(r: Record<string, unknown>): MyReservation {
@@ -209,6 +243,10 @@ function toMyReservation(r: Record<string, unknown>): MyReservation {
     decisionNote: String(r.decision_note || ''),
     createdAt: String(r.created_at || ''),
     changeFromId: (r.change_from_id as string | null) ?? null,
+    serviceType: String(r.service_type || ''),
+    serviceLabel: String(r.service_label || ''),
+    durationMin: Number(r.duration_min) || 0,
+    price: Number(r.price) || 0,
   }
 }
 

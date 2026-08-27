@@ -368,3 +368,24 @@
   color: var(--red);
   margin-right: 8px;
 }
+
+/* 予約から始めるとき、お客様が申し込みで選んだ席をここに出す。
+   通常/VIP はルームで決まるので、食い違っていたら気づけるようにするだけ。
+   止めはしない（希望のルームが空いていないこともある） */
+.seat-want {
+  margin: var(--space-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+
+.seat-want strong {
+  color: var(--text);
+}
+
+.seat-want.is-mismatch {
+  color: var(--red);
+}
+
+.seat-want.is-mismatch strong {
+  color: var(--red);
+}

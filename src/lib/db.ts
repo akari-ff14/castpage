@@ -65,6 +65,8 @@ export interface ReservationShape {
   顧客名: string
   予約金額: number
   予約時間: number   // 対応時間（分）
+  希望席: string       // お客様が選んだ接客種別のキー。店内で入れた予約は空
+  希望席表示名: string  // 同じものの表示名（通常 / VIP）
   予約日時: string
   ルーム: string
   備考: string
@@ -322,9 +324,10 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 }
 
 export async function getReservations(): Promise<ReservationShape[]> {
+  const pricing = await loadPricing()
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, status, source, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, status, source, service_type, created_at, updated_at, cast:casts(name), room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
@@ -333,6 +336,8 @@ export async function getReservations(): Promise<ReservationShape[]> {
     顧客名: r.customer_name,
     予約金額: Number(r.reservation_price),
     予約時間: Number(r.duration_min) || 60,
+    希望席: String(r.service_type || ''),
+    希望席表示名: pricing.get(String(r.service_type || ''))?.label || '',
     予約日時: r.reserved_at,
     ルーム: (r.room as { name?: string } | null)?.name || '',
     備考: r.note,
@@ -769,6 +774,9 @@ export async function addReservation(payload: {
     顧客名: data.customer_name,
     予約金額: Number(data.reservation_price),
     予約時間: Number(data.duration_min) || 60,
+    // 店内で入れた予約は通常/VIP がルームで決まるので、希望席は持たない
+    希望席: '',
+    希望席表示名: '',
     予約日時: data.reserved_at,
     ルーム: (data.room as { name?: string } | null)?.name || '',
     備考: data.note,
