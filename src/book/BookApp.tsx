@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState, type CSSProperties } from 'react'
 import {
   cancelReservation,
   fetchBookingDays,
@@ -43,6 +43,18 @@ function labelDay(isoDate: string): string {
   const [y, m, d] = isoDate.split('-').map(Number)
   const w = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
   return `${m}月${d}日（${w}）`
+}
+
+// 日付の見出し。日にちと曜日で大きさを変えたいので、組み立ては呼ぶ側に任せる
+function DayTitle({ isoDate, as: Tag = 'h2' }: { isoDate: string; as?: 'h2' | 'h3' }) {
+  const [y, m, d] = isoDate.split('-').map(Number)
+  const w = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+  return (
+    <Tag className="bk-day-title">
+      <span>{m}月{d}日</span>
+      <span className="bk-day-dow">{w}</span>
+    </Tag>
+  )
 }
 
 function labelDateTime(iso: string | null): string {
@@ -103,10 +115,10 @@ export default function BookApp() {
 
   return (
     <div className="bk">
-      <header className="bk-header">
-        <div className="bk-lamp" aria-hidden="true">灯</div>
+      <header className="bk-mast">
+        <div className="bk-mark" aria-hidden="true">灯</div>
         <div>
-          <div className="bk-shop">対話店［灯］</div>
+          <p className="bk-shop">対話店［灯］</p>
           <h1 className="bk-h1">{onMyPage ? 'ご予約の状況' : 'ご予約のお申し込み'}</h1>
         </div>
       </header>
@@ -118,10 +130,13 @@ export default function BookApp() {
 
       {/* 店からの案内。書かれていなければ何も出さない */}
       {notice.trim() && (
-        <section className="bk-notice">
-          {notice.split(/\r?\n/).map((line, i) => (
-            <p key={i}>{line}</p>
-          ))}
+        <section className="bk-notice" aria-label="店からのご案内">
+          <p className="bk-label">ご案内</p>
+          <div className="bk-notice-body">
+            {notice.split(/\r?\n/).map((line, i) => (
+              <p key={i}>{line}</p>
+            ))}
+          </div>
         </section>
       )}
 
@@ -298,7 +313,7 @@ function SlotPicker() {
     return (
       <main className="bk-main">
         <section className="bk-done">
-          <p className="bk-done-eyebrow">お申し込みを受け付けました</p>
+          <p className="bk-label">お申し込みを受け付けました</p>
           <h2 className="bk-done-title">まだ確定ではありません</h2>
           <p className="bk-done-lead">
             店が内容を確認して、あらためてお返事します。
@@ -364,14 +379,12 @@ function SlotPicker() {
         {days?.map((day) => (
           <section key={day.businessDate} className="bk-day">
             <div className="bk-day-head">
-              <h2 className="bk-day-title">{labelDay(day.businessDate)}</h2>
+              <DayTitle isoDate={day.businessDate} />
               {!day.isAccepting && day.acceptFrom && (
-                <span className="bk-day-badge">{labelDateTime(day.acceptFrom)} から受付開始</span>
+                <span className="bk-day-when">{labelDateTime(day.acceptFrom)} から受付開始</span>
               )}
               {day.isAccepting && day.acceptUntil && (
-                <span className="bk-day-badge bk-day-badge-quiet">
-                  {labelDateTime(day.acceptUntil)} まで受付
-                </span>
+                <span className="bk-day-when">{labelDateTime(day.acceptUntil)} まで受付</span>
               )}
             </div>
 
@@ -379,7 +392,7 @@ function SlotPicker() {
 
             {!day.isAccepting && day.acceptFrom && (
               <p className="bk-day-wait">
-                まだ受付前です。上の時刻になると、この下のボタンからお申し込みいただけます。
+                まだ受付前です。上の時刻になると、この下の枠に灯がともり、お申し込みいただけます。
               </p>
             )}
 
@@ -408,7 +421,7 @@ function SlotPicker() {
             </p>
 
             <div className="bk-field">
-              <span className="bk-label">お名前<em className="bk-req">必須</em></span>
+              <span className="bk-label-row">お名前<em className="bk-req">必須</em></span>
               <div className="bk-names">
                 {names.map((n, i) => (
                   <div key={i} className="bk-name-row">
@@ -453,7 +466,7 @@ function SlotPicker() {
             </div>
 
             <label className="bk-field">
-              <span className="bk-label">メールアドレス<em className="bk-opt">任意</em></span>
+              <span className="bk-label-row">メールアドレス<em className="bk-opt">任意</em></span>
               <input
                 className="bk-input"
                 type="email"
@@ -471,7 +484,7 @@ function SlotPicker() {
             </p>
 
             <label className="bk-field">
-              <span className="bk-label">ご要望など<em className="bk-opt">任意</em></span>
+              <span className="bk-label-row">ご要望など<em className="bk-opt">任意</em></span>
               <textarea
                 className="bk-input bk-textarea"
                 value={note}
@@ -524,39 +537,44 @@ function CastSlots({
   onPick: (castId: string, castName: string, slot: PublicSlot) => void
 }) {
   return (
-    <div className="bk-casts">
-      {day.casts.map((cast) => (
-        <div key={cast.castId} className="bk-cast">
-          <div className="bk-cast-name">{cast.castName}</div>
-          <div className="bk-slots">
-            {cast.slots.map((slot) => {
-              const canBook = day.isAccepting && slot.state === 'open'
-              // 受付開始前は空き状況を伏せる。金色で「空き」と出すと押せそうに見えて、
-              // 押せないボタンを前にした人が困る。時刻だけ並べて予告にとどめる
-              const shown = day.isAccepting ? slot.state : 'closed'
-              return (
-                <button
-                  key={slot.slotNo}
-                  type="button"
-                  className={`bk-slot bk-slot-${shown}`}
-                  disabled={!canBook}
-                  // ボタンの中は時刻と状態しか書いていないので、読み上げでは
-                  // どのキャストの枠か分からなくなる。ここで補う
-                  aria-label={
-                    day.isAccepting
-                      ? `${cast.castName} ${slotRange(slot.slotTime)} ${STATE_LABEL[slot.state]}`
-                      : `${cast.castName} ${slotRange(slot.slotTime)} 受付開始前`
-                  }
-                  onClick={() => onPick(cast.castId, cast.castName, slot)}
-                >
-                  <span className="bk-slot-time">{slot.slotTime}</span>
-                  {day.isAccepting && (
-                    <span className="bk-slot-state">{STATE_LABEL[slot.state]}</span>
-                  )}
-                </button>
-              )
-            })}
-          </div>
+    <div className="bk-board">
+      {day.casts.map((cast, row) => (
+        <div
+          key={cast.castId}
+          className="bk-row"
+          style={{ '--cols': cast.slots.length } as CSSProperties}
+        >
+          <span className="bk-row-cast">{cast.castName}</span>
+          {cast.slots.map((slot, col) => {
+            const canBook = day.isAccepting && slot.state === 'open'
+            // 受付開始前は空き状況を伏せる。金色で「空き」と出すと押せそうに見えて、
+            // 押せないボタンを前にした人が困る。時刻だけ並べて予告にとどめる
+            const shown = day.isAccepting ? slot.state : 'closed'
+            return (
+              <button
+                key={slot.slotNo}
+                type="button"
+                className={`bk-cell bk-cell-${shown}`}
+                disabled={!canBook}
+                // 灯は左上から順に点る。画面が開いた一拍のあいだに
+                // 「どこが空いているか」が目に入るようにする
+                style={{ '--i': row * 2 + col } as CSSProperties}
+                // ボタンの中は時刻と状態しか書いていないので、読み上げでは
+                // どのキャストの枠か分からなくなる。ここで補う
+                aria-label={
+                  day.isAccepting
+                    ? `${cast.castName} ${slotRange(slot.slotTime)} ${STATE_LABEL[slot.state]}`
+                    : `${cast.castName} ${slotRange(slot.slotTime)} 受付開始前`
+                }
+                onClick={() => onPick(cast.castId, cast.castName, slot)}
+              >
+                <span className="bk-cell-time">{slot.slotTime}</span>
+                {day.isAccepting && (
+                  <span className="bk-cell-state">{STATE_LABEL[slot.state]}</span>
+                )}
+              </button>
+            )
+          })}
         </div>
       ))}
     </div>
@@ -742,7 +760,7 @@ function MyReservations() {
 
         {finished.length > 0 && (
           <section className="bk-mylist">
-            <h2 className="bk-sub-h">過去のお申し込み</h2>
+            <p className="bk-label">過去のお申し込み</p>
             {finished.map((r) => (
               <MyCard key={r.id} r={r} />
             ))}
@@ -752,7 +770,7 @@ function MyReservations() {
         {!noSession && <PushSetting />}
 
         <section className="bk-lookup">
-          <h2 className="bk-sub-h">予約番号で調べる</h2>
+          <p className="bk-label">予約番号で調べる</p>
           <p className="bk-lookup-lead">
             別の端末でお申し込みになった予約は、番号を入れると確認できます。
           </p>
@@ -822,7 +840,7 @@ function MyReservations() {
                 {changeDays?.map((day) => (
                   <div key={day.businessDate} className="bk-change-day">
                     <div className="bk-day-head">
-                      <h3 className="bk-day-title">{labelDay(day.businessDate)}</h3>
+                      <DayTitle isoDate={day.businessDate} as="h3" />
                     </div>
                     <CastSlots
                       day={day}
@@ -900,7 +918,7 @@ function PushSetting() {
 
   return (
     <section className="bk-push">
-      <h2 className="bk-sub-h">お知らせの受け取り</h2>
+      <p className="bk-label">お知らせの受け取り</p>
 
       {state === 'on' && (
         <>

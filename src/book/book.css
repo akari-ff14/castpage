@@ -1,32 +1,36 @@
 /* お客様向け予約ページ。
    キャスト用アプリの App.css は読み込まない（配信ファイルを分けているため）。
-   店の営業が 21 時からの夜なので、暗い地に灯火の色をひとつ置く配色で通す。
+
+   考え方：
+   このページの中身は「日 × キャスト × 決まった時刻」の席表なので、
+   箱を積むのではなく、罫線と列で組む。面を持つのは、押して閉じる
+   申し込みシートだけ。
+
+   店の名前は［灯］なので、空いている枠にだけ灯を点す。
+   色が出るのは押せるところだけ、という状態にしておくと、
+   夜に見ても目が迷わない。エラーだけは別で、赤を1色だけ持つ。
+
    テーマ切り替えはないので、色は端末の設定に関わらずここで決め切る。 */
 
 :root {
-  --bk-ground: #14100f;
-  --bk-surface: #1e1817;
-  --bk-surface2: #262020;
-  --bk-line: #352b29;
-  --bk-line2: #4a3b37;
+  /* 夜の墨。灰色ではなく、木と灯の残る暖かい黒 */
+  --bk-ground: #12100e;
+  --bk-lift: #191512;      /* 申し込みシート。地から一段だけ持ち上げる */
+  --bk-rule: #29221f;      /* 罫。ページの構造はこれで作る */
+  --bk-rule-lit: #3d332d;
 
-  --bk-lamp: #e0b464;      /* 灯火。ページで一番強い色はここだけ */
-  --bk-lamp-dim: #8a6a35;
-  --bk-lamp-bg: #241c12;
+  --bk-lamp: #f0be6e;      /* 灯。押せる枠にだけ点く */
+  --bk-lamp-deep: #c07b3a;
+  --bk-glow: rgba(240, 190, 110, 0.21);
 
-  /* 申込中。灯火の金に寄せると「空き」と見分けがつかないので、
-     彩度を落として沈ませる。光っているのは押せる枠だけ、という状態にする */
-  --bk-hold: #93806a;
-  --bk-hold-bg: #1d1917;
-  --bk-full: #9c5f57;      /* 満席 */
-  --bk-full-bg: #241615;
+  --bk-ink: #f0e9de;
+  --bk-ink-dim: #9d9086;
+  --bk-ink-faint: #685d55;
 
-  --bk-ink: #f2ece4;
-  --bk-ink-dim: #a2948b;
-  --bk-ink-faint: #6d605a;
+  --bk-warn: #d9806e;      /* 入力の誤りにだけ使う。飾りには使わない */
 
-  --bk-serif: 'Noto Serif JP', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
-  --bk-sans: 'Hiragino Kaku Gothic ProN', 'Yu Gothic', 'Noto Sans JP', Meiryo, sans-serif;
+  --bk-mincho: 'Shippori Mincho', 'Hiragino Mincho ProN', 'Yu Mincho', serif;
+  --bk-gothic: 'Zen Kaku Gothic New', 'Hiragino Kaku Gothic ProN', 'Yu Gothic', Meiryo, sans-serif;
 
   --bk-s1: 4px;
   --bk-s2: 8px;
@@ -50,59 +54,107 @@ body {
 body {
   background: var(--bk-ground);
   color: var(--bk-ink);
-  font-family: var(--bk-sans);
-  font-size: 16px;
-  line-height: 1.8;
+  font-family: var(--bk-gothic);
+  font-size: 15px;
+  line-height: 1.85;
   -webkit-font-smoothing: antialiased;
 }
 
 .bk {
-  max-width: 720px;
+  max-width: 580px;
   margin: 0 auto;
   padding: 0 var(--bk-s4) var(--bk-s7);
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s5);
+  gap: var(--bk-s6);
 }
 
-/* ---------- ヘッダー ---------- */
+/* ---------- 題字 ---------- */
 
-.bk-header {
+.bk-mast {
   display: flex;
   align-items: center;
   gap: var(--bk-s4);
-  padding: var(--bk-s6) 0 var(--bk-s4);
-  border-bottom: 1px solid var(--bk-line);
+  padding-top: var(--bk-s7);
 }
 
-.bk-lamp {
+/* 店の名前の一字。ページで最初に点る灯 */
+.bk-mark {
   flex: none;
-  width: 46px;
-  height: 46px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  border: 1px solid var(--bk-lamp-dim);
-  background: var(--bk-lamp-bg);
-  color: var(--bk-lamp);
-  font-family: var(--bk-serif);
-  font-size: 22px;
+  font-family: var(--bk-mincho);
+  font-weight: 700;
+  font-size: 38px;
   line-height: 1;
+  color: var(--bk-lamp);
+  text-shadow: 0 0 30px rgba(240, 190, 110, 0.38);
 }
 
 .bk-shop {
-  font-family: var(--bk-serif);
-  font-size: 13px;
-  letter-spacing: 0.18em;
-  color: var(--bk-ink-dim);
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.34em;
+  color: var(--bk-ink-faint);
 }
 
 .bk-h1 {
   margin: 2px 0 0;
-  font-family: var(--bk-serif);
-  font-size: 22px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: var(--bk-mincho);
+  font-size: 21px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+}
+
+.bk-nav {
+  display: flex;
+  gap: var(--bk-s5);
+  border-bottom: 1px solid var(--bk-rule-lit);
+  margin-top: calc(var(--bk-s6) * -1 + var(--bk-s2));
+}
+
+.bk-nav-tab {
+  padding-bottom: var(--bk-s2);
+  margin-bottom: -1px;
+  color: var(--bk-ink-faint);
+  text-decoration: none;
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  border-bottom: 1px solid transparent;
+}
+
+.bk-nav-tab:hover {
+  color: var(--bk-ink-dim);
+}
+
+.bk-nav-tab.is-current {
+  color: var(--bk-lamp);
+  border-bottom-color: var(--bk-lamp);
+}
+
+.bk-nav-tab:focus-visible {
+  outline: 2px solid var(--bk-lamp);
+  outline-offset: 3px;
+}
+
+/* ---------- 見出しの罫 ----------
+   囲まずに区切るための、このページ共通の仕切り。
+   小さな見出しの右に細い線を伸ばして、ここから下が何の話かを示す */
+
+.bk-label {
+  display: flex;
+  align-items: center;
+  gap: var(--bk-s3);
+  margin: 0 0 var(--bk-s3);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  color: var(--bk-ink-dim);
+}
+
+.bk-label::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--bk-rule);
 }
 
 /* ---------- 本体 ---------- */
@@ -115,34 +167,46 @@ body {
 
 .bk-loading,
 .bk-error {
-  color: var(--bk-ink-dim);
+  color: var(--bk-ink-faint);
   text-align: center;
   padding: var(--bk-s6) 0;
 }
 
 .bk-error {
-  color: var(--bk-full);
+  color: var(--bk-warn);
 }
 
 .bk-empty {
-  text-align: center;
-  padding: var(--bk-s6) var(--bk-s4);
-  border: 1px solid var(--bk-line);
-  border-radius: 10px;
-  background: var(--bk-surface);
+  padding: var(--bk-s5) 0;
+  border-top: 1px solid var(--bk-rule);
+  border-bottom: 1px solid var(--bk-rule);
 }
 
 .bk-empty h2 {
   margin: 0 0 var(--bk-s2);
-  font-family: var(--bk-serif);
+  font-family: var(--bk-mincho);
   font-size: 18px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.06em;
 }
 
 .bk-empty p {
   margin: 0;
   color: var(--bk-ink-dim);
   font-size: 14px;
+}
+
+/* ---------- 店からの案内 ---------- */
+
+.bk-notice-body {
+  color: var(--bk-ink-dim);
+  font-size: 14.5px;
+}
+
+.bk-notice-body p {
+  margin: 0;
+  min-height: 1em;   /* 空行も行として残す */
+  line-height: 1.9;
 }
 
 /* ---------- 日ごとのまとまり ---------- */
@@ -156,37 +220,48 @@ body {
 .bk-day-head {
   display: flex;
   align-items: baseline;
+  justify-content: space-between;
   flex-wrap: wrap;
-  gap: var(--bk-s2) var(--bk-s3);
+  gap: var(--bk-s1) var(--bk-s4);
   padding-bottom: var(--bk-s2);
-  border-bottom: 1px solid var(--bk-line);
+  border-bottom: 1px solid var(--bk-rule-lit);
 }
 
 .bk-day-title {
+  display: flex;
+  align-items: baseline;
+  gap: 0.55em;
   margin: 0;
-  font-family: var(--bk-serif);
-  font-size: 19px;
-  font-weight: 600;
-  letter-spacing: 0.04em;
+  font-family: var(--bk-mincho);
+  font-size: 29px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
 }
 
-.bk-day-badge {
-  font-size: 12px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  color: var(--bk-lamp);
-  background: var(--bk-lamp-bg);
-  border: 1px solid var(--bk-lamp-dim);
+.bk-day-dow {
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  color: var(--bk-ink-dim);
+}
+
+/* 受付の開始・締切。枠より前に出したくないので、線の高さに沿わせるだけ */
+.bk-day-when {
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  color: var(--bk-ink-dim);
   font-variant-numeric: tabular-nums;
 }
 
 .bk-day-note {
   margin: 0;
-  padding: var(--bk-s2) var(--bk-s3);
-  border-left: 2px solid var(--bk-lamp-dim);
-  background: var(--bk-surface);
   color: var(--bk-ink-dim);
   font-size: 14px;
+}
+
+.bk-day-note::before {
+  content: '　';
 }
 
 .bk-day-wait {
@@ -195,96 +270,122 @@ body {
   font-size: 13px;
 }
 
-.bk-casts {
+/* ---------- 席表 ---------- */
+
+.bk-board {
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s3);
 }
 
-.bk-cast {
-  padding: var(--bk-s3);
-  border: 1px solid var(--bk-line);
-  border-radius: 10px;
-  background: var(--bk-surface);
-}
-
-.bk-cast-name {
-  font-family: var(--bk-serif);
-  font-size: 16px;
-  margin-bottom: var(--bk-s2);
-  letter-spacing: 0.06em;
-}
-
-/* ---------- 枠のボタン ---------- */
-
-.bk-slots {
+.bk-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
-  gap: var(--bk-s2);
+  grid-template-columns: 6em repeat(var(--cols, 3), minmax(0, 7em));
+  align-items: center;
+  gap: var(--bk-s1) var(--bk-s2);
+  padding: var(--bk-s2) 0;
 }
 
-.bk-slot {
+.bk-row + .bk-row {
+  border-top: 1px solid var(--bk-rule);
+}
+
+.bk-row-cast {
+  font-size: 14px;
+  letter-spacing: 0.1em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 枠ひとつ。時刻が主で、状態はその下に小さく添える */
+.bk-cell {
   appearance: none;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  border-radius: 2px 2px 0 0;
+  background: none;
+  padding: var(--bk-s2) var(--bk-s1) 5px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 2px;
-  padding: var(--bk-s3) var(--bk-s2);
-  border-radius: 8px;
-  border: 1px solid var(--bk-line2);
-  background: var(--bk-surface2);
-  color: var(--bk-ink-dim);
+  gap: 1px;
   font-family: inherit;
+  color: var(--bk-ink-faint);
   cursor: default;
-  transition: border-color 0.15s, background 0.15s, transform 0.1s;
+  transition: background 0.2s, color 0.2s, border-color 0.2s;
 }
 
-.bk-slot-time {
-  font-size: 17px;
-  font-variant-numeric: tabular-nums;
+.bk-cell-time {
+  font-family: var(--bk-mincho);
+  font-size: 20px;
+  font-weight: 500;
+  line-height: 1.2;
   letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-.bk-slot-state {
-  font-size: 12px;
+.bk-cell-state {
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
 }
 
-/* 空き = 唯一押せる状態。ページの中でここだけを光らせる */
-.bk-slot-open {
-  border-color: var(--bk-lamp-dim);
-  background: var(--bk-lamp-bg);
+/* 空き。ページで灯が点るのはここだけ。
+   光は箱の縁で切らずに、ぼかして外へにじませる */
+.bk-cell-open {
+  position: relative;
   color: var(--bk-lamp);
   cursor: pointer;
+  border-bottom-color: rgba(240, 190, 110, 0.5);
+  animation: bk-lamp-on 0.55s ease-out both;
+  animation-delay: calc(var(--i, 0) * 55ms);
 }
 
-.bk-slot-open:hover {
-  border-color: var(--bk-lamp);
-  background: #2c2216;
+.bk-cell-open::before {
+  content: '';
+  position: absolute;
+  inset: -10px -8px -12px;
+  background: radial-gradient(ellipse 58% 64% at 50% 62%, var(--bk-glow), transparent 70%);
+  filter: blur(9px);
+  pointer-events: none;
+  transition: background 0.2s;
 }
 
-.bk-slot-open:active {
+.bk-cell-open > * {
+  position: relative;
+}
+
+.bk-cell-open:hover {
+  color: #ffd28f;
+  border-bottom-color: var(--bk-lamp);
+}
+
+.bk-cell-open:hover::before {
+  background: radial-gradient(ellipse 62% 70% at 50% 62%, rgba(240, 190, 110, 0.38), transparent 72%);
+}
+
+.bk-cell-open:active {
   transform: translateY(1px);
 }
 
-.bk-slot-pending {
-  color: var(--bk-hold);
-  background: var(--bk-hold-bg);
-  border-color: #3a332c;
+@keyframes bk-lamp-on {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
-.bk-slot-confirmed {
-  color: var(--bk-full);
-  background: var(--bk-full-bg);
-  border-color: #452724;
+/* 先にお申し込みの方がいる枠。点いていないが、まだ空く見込みはある */
+.bk-cell-pending {
+  color: var(--bk-ink-dim);
+  border-bottom: 1px dotted var(--bk-rule-lit);
 }
 
-.bk-slot-closed {
-  color: var(--bk-ink-faint);
-  background: transparent;
-  border-style: dashed;
+/* 満席。灯は消えている。色を足さずに、時刻に線を引いて示す */
+.bk-cell-confirmed .bk-cell-time {
+  text-decoration: line-through;
+  text-decoration-thickness: 1px;
+  text-decoration-color: currentColor;
 }
 
-.bk-slot:focus-visible {
+.bk-cell:focus-visible {
   outline: 2px solid var(--bk-lamp);
   outline-offset: 2px;
 }
@@ -294,10 +395,10 @@ body {
 .bk-legend {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--bk-s2) var(--bk-s4);
+  gap: var(--bk-s2) var(--bk-s5);
   margin: 0;
-  font-size: 13px;
-  color: var(--bk-ink-dim);
+  font-size: 12.5px;
+  color: var(--bk-ink-faint);
 }
 
 .bk-legend-item {
@@ -307,64 +408,71 @@ body {
 }
 
 .bk-dot {
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex: none;
+  border: 1px solid currentColor;
 }
 
 .bk-dot-open {
   background: var(--bk-lamp);
+  border-color: var(--bk-lamp);
+  box-shadow: 0 0 8px rgba(240, 190, 110, 0.6);
 }
 
 .bk-dot-pending {
-  background: var(--bk-hold);
+  background: var(--bk-ink-dim);
+  border-color: var(--bk-ink-dim);
 }
 
 .bk-dot-confirmed {
-  background: var(--bk-full);
+  background: none;
 }
 
-/* ---------- 申し込みフォーム ---------- */
+/* ---------- 申し込みシート ---------- */
 
 .bk-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(8, 5, 5, 0.72);
+  background: rgba(5, 4, 3, 0.8);
+  backdrop-filter: blur(2px);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: var(--bk-s4);
   z-index: 50;
 }
 
+/* ページで唯一、面を持つもの。手前に来て閉じられるので縁があってよい。
+   上の一辺だけ灯の色にして、地から浮いていることを示す */
 .bk-sheet {
   width: 100%;
-  max-width: 480px;
-  max-height: 88vh;
+  max-width: 520px;
+  max-height: 92vh;
   overflow-y: auto;
-  padding: var(--bk-s5);
-  border-radius: 14px;
-  border: 1px solid var(--bk-line2);
-  background: var(--bk-surface);
+  padding: var(--bk-s5) var(--bk-s5) var(--bk-s6);
+  background: var(--bk-lift);
+  border-top: 1px solid var(--bk-lamp-deep);
+  border-radius: 5px 5px 0 0;
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s3);
+  gap: var(--bk-s5);
 }
 
 .bk-sheet-title {
   margin: 0;
-  font-family: var(--bk-serif);
+  font-family: var(--bk-mincho);
   font-size: 19px;
-  font-weight: 600;
+  font-weight: 500;
+  letter-spacing: 0.1em;
 }
 
 .bk-sheet-sub {
   margin: 0;
   padding-bottom: var(--bk-s3);
-  border-bottom: 1px solid var(--bk-line);
+  border-bottom: 1px solid var(--bk-rule);
   color: var(--bk-lamp);
-  font-size: 14px;
+  font-size: 14.5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -374,42 +482,42 @@ body {
   gap: var(--bk-s1);
 }
 
-.bk-label {
+.bk-label-row {
   display: flex;
-  align-items: center;
+  align-items: baseline;
   gap: var(--bk-s2);
-  font-size: 13px;
+  font-size: 12.5px;
+  letter-spacing: 0.1em;
   color: var(--bk-ink-dim);
 }
 
 .bk-req,
 .bk-opt {
   font-style: normal;
-  font-size: 11px;
-  padding: 1px 6px;
-  border-radius: 3px;
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
 }
 
 .bk-req {
-  color: var(--bk-lamp);
-  background: var(--bk-lamp-bg);
-  border: 1px solid var(--bk-lamp-dim);
+  color: var(--bk-lamp-deep);
 }
 
 .bk-opt {
   color: var(--bk-ink-faint);
-  border: 1px solid var(--bk-line2);
 }
 
+/* 入力欄は下線だけ。囲みを増やさない */
 .bk-input {
   width: 100%;
-  padding: var(--bk-s3);
-  border-radius: 8px;
-  border: 1px solid var(--bk-line2);
-  background: var(--bk-ground);
+  padding: 9px 2px;
+  border: 0;
+  border-bottom: 1px solid var(--bk-rule-lit);
+  border-radius: 0;
+  background: transparent;
   color: var(--bk-ink);
   font-family: inherit;
   font-size: 16px; /* iOS で focus 時に拡大されないよう 16px 以上を保つ */
+  transition: border-color 0.15s;
 }
 
 .bk-input::placeholder {
@@ -418,59 +526,68 @@ body {
 
 .bk-input:focus {
   outline: none;
-  border-color: var(--bk-lamp-dim);
+  border-bottom-color: var(--bk-lamp);
 }
 
+/* 何行も書ける欄だけは、どこまでが入力域か分かるよう面を持たせる */
 .bk-textarea {
+  padding: var(--bk-s3);
+  border: 1px solid var(--bk-rule);
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.022);
   resize: vertical;
-  line-height: 1.7;
+  line-height: 1.8;
+}
+
+.bk-textarea:focus {
+  border-color: var(--bk-lamp-deep);
+  border-bottom-color: var(--bk-lamp-deep);
 }
 
 .bk-form-err {
   margin: 0;
-  padding: var(--bk-s2) var(--bk-s3);
-  border-radius: 8px;
-  background: var(--bk-full-bg);
-  border: 1px solid #452724;
-  color: var(--bk-full);
+  padding-left: var(--bk-s3);
+  border-left: 2px solid var(--bk-warn);
+  color: var(--bk-warn);
   font-size: 14px;
 }
 
 .bk-sheet-actions {
   display: flex;
-  gap: var(--bk-s2);
+  gap: var(--bk-s3);
   margin-top: var(--bk-s2);
 }
 
 .bk-btn {
   flex: 1;
   padding: var(--bk-s3) var(--bk-s4);
-  border-radius: 8px;
+  border-radius: 3px;
   font-family: inherit;
-  font-size: 15px;
+  font-size: 14.5px;
+  letter-spacing: 0.08em;
   cursor: pointer;
   border: 1px solid transparent;
-  transition: background 0.15s, border-color 0.15s;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .bk-btn:disabled {
-  opacity: 0.6;
+  opacity: 0.5;
   cursor: default;
 }
 
 .bk-btn-primary {
   background: var(--bk-lamp);
-  color: #1b1409;
+  color: #1a1309;
   font-weight: 700;
 }
 
 .bk-btn-primary:hover:not(:disabled) {
-  background: #eec078;
+  background: #ffd28f;
 }
 
 .bk-btn-ghost {
   background: transparent;
-  border-color: var(--bk-line2);
+  border-color: var(--bk-rule-lit);
   color: var(--bk-ink-dim);
 }
 
@@ -479,49 +596,61 @@ body {
   color: var(--bk-ink);
 }
 
+.bk-btn-danger {
+  background: transparent;
+  border-color: rgba(217, 128, 110, 0.4);
+  color: var(--bk-warn);
+}
+
+.bk-btn-danger:hover:not(:disabled) {
+  border-color: var(--bk-warn);
+}
+
+.bk-btn-small {
+  flex: none;
+  padding: 6px var(--bk-s4);
+  font-size: 13px;
+}
+
+.bk-btn-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
 .bk-btn:focus-visible {
   outline: 2px solid var(--bk-lamp);
   outline-offset: 2px;
 }
 
-/* ---------- 完了画面 ---------- */
+/* ---------- 申し込みのあと ---------- */
 
 .bk-done {
-  padding: var(--bk-s5);
-  border: 1px solid var(--bk-line2);
-  border-radius: 14px;
-  background: var(--bk-surface);
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s3);
-}
-
-.bk-done-eyebrow {
-  margin: 0;
-  font-size: 13px;
-  letter-spacing: 0.1em;
-  color: var(--bk-lamp);
+  gap: var(--bk-s4);
 }
 
 .bk-done-title {
   margin: 0;
-  font-family: var(--bk-serif);
-  font-size: 21px;
-  font-weight: 600;
+  font-family: var(--bk-mincho);
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
 }
 
 .bk-done-lead {
   margin: 0;
   color: var(--bk-ink-dim);
-  font-size: 15px;
+  font-size: 14.5px;
 }
 
 .bk-done-detail {
   margin: 0;
-  padding: var(--bk-s3);
-  border-radius: 10px;
-  background: var(--bk-ground);
-  border: 1px solid var(--bk-line);
+  padding: var(--bk-s3) 0;
+  border-top: 1px solid var(--bk-rule);
+  border-bottom: 1px solid var(--bk-rule);
   display: flex;
   flex-direction: column;
   gap: var(--bk-s2);
@@ -536,7 +665,8 @@ body {
   flex: none;
   width: 5em;
   color: var(--bk-ink-faint);
-  font-size: 14px;
+  font-size: 13px;
+  letter-spacing: 0.1em;
 }
 
 .bk-done-detail dd {
@@ -544,24 +674,30 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* 予約番号。あとで頼りにする一点なので、ここも灯を点す */
 .bk-code {
-  display: flex;
-  align-items: baseline;
-  gap: var(--bk-s3);
-  padding: var(--bk-s3);
-  border-radius: 10px;
-  background: var(--bk-lamp-bg);
-  border: 1px solid var(--bk-lamp-dim);
+  text-align: center;
+  padding: var(--bk-s5) var(--bk-s4);
+  border-top: 1px solid var(--bk-rule);
+  border-bottom: 1px solid var(--bk-rule);
+  background: radial-gradient(ellipse 66% 130% at 50% 50%, var(--bk-glow), transparent 72%);
 }
 
 .bk-code-label {
-  font-size: 13px;
+  display: block;
+  font-size: 11px;
+  letter-spacing: 0.28em;
   color: var(--bk-ink-dim);
 }
 
 .bk-code-value {
-  font-size: 24px;
-  letter-spacing: 0.08em;
+  display: block;
+  margin-top: var(--bk-s1);
+  font-family: var(--bk-mincho);
+  font-weight: 700;
+  font-size: 33px;
+  line-height: 1.2;
+  letter-spacing: 0.18em;
   color: var(--bk-lamp);
   font-variant-numeric: tabular-nums;
 }
@@ -572,120 +708,55 @@ body {
   color: var(--bk-ink-faint);
 }
 
+.bk-done-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--bk-s2);
+}
+
 /* ---------- フッター ---------- */
 
 .bk-footer {
   padding-top: var(--bk-s4);
-  border-top: 1px solid var(--bk-line);
+  border-top: 1px solid var(--bk-rule);
   color: var(--bk-ink-faint);
-  font-size: 13px;
+  font-size: 12.5px;
 }
 
 .bk-footer p {
-  margin: 0 0 var(--bk-s1);
-}
-
-@media (min-width: 560px) {
-  .bk-overlay {
-    align-items: center;
-  }
-
-  .bk-cast {
-    display: flex;
-    align-items: center;
-    gap: var(--bk-s4);
-  }
-
-  .bk-cast-name {
-    flex: none;
-    width: 7em;
-    margin-bottom: 0;
-  }
-
-  .bk-slots {
-    flex: 1;
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .bk-slot,
-  .bk-btn {
-    transition: none;
-  }
-}
-
-/* 受付中の日に出す「◯時まで受付」。開始の予告ほど強く見せなくてよい */
-.bk-day-badge-quiet {
-  color: var(--bk-ink-dim);
-  background: transparent;
-  border-color: var(--bk-line2);
-}
-
-/* ---------- 画面の切り替え ---------- */
-
-.bk-nav {
-  display: flex;
-  gap: var(--bk-s2);
-  border-bottom: 1px solid var(--bk-line);
-  margin-top: calc(var(--bk-s5) * -1);
-}
-
-.bk-nav-tab {
-  padding: var(--bk-s3) var(--bk-s4);
-  color: var(--bk-ink-dim);
-  text-decoration: none;
-  font-size: 15px;
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
-}
-
-.bk-nav-tab:hover {
-  color: var(--bk-ink);
-}
-
-.bk-nav-tab.is-current {
-  color: var(--bk-lamp);
-  border-bottom-color: var(--bk-lamp);
-}
-
-.bk-nav-tab:focus-visible {
-  outline: 2px solid var(--bk-lamp);
-  outline-offset: -2px;
+  margin: 0;
 }
 
 /* ---------- 自分の予約 ---------- */
 
-.bk-sub-h {
-  margin: 0 0 var(--bk-s3);
-  font-family: var(--bk-serif);
-  font-size: 16px;
-  font-weight: 600;
-  color: var(--bk-ink-dim);
-  letter-spacing: 0.06em;
-}
-
 .bk-mylist {
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s3);
 }
 
+/* 一件ごとの控え。囲まず、罫で区切る。
+   確定したものだけ、左から灯がさしているように見せる */
 .bk-mycard {
-  padding: var(--bk-s4);
-  border: 1px solid var(--bk-line);
-  border-left-width: 3px;
-  border-radius: 10px;
-  background: var(--bk-surface);
+  padding: var(--bk-s4) var(--bk-s3);
+  margin: 0 calc(var(--bk-s3) * -1);
+  border-top: 1px solid var(--bk-rule);
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s1);
+  gap: 2px;
 }
 
-.bk-mycard-pending { border-left-color: var(--bk-hold); }
-.bk-mycard-confirmed { border-left-color: var(--bk-lamp); }
-.bk-mycard-rejected { border-left-color: var(--bk-full); }
+.bk-mylist > .bk-mycard:first-child {
+  border-top: 0;
+}
+
+.bk-mycard-confirmed {
+  background: linear-gradient(90deg, rgba(240, 190, 110, 0.075), transparent 62%);
+}
+
 .bk-mycard-cancelled,
-.bk-mycard-past { border-left-color: var(--bk-line2); opacity: 0.72; }
+.bk-mycard-past {
+  opacity: 0.6;
+}
 
 .bk-mycard-head {
   display: flex;
@@ -695,174 +766,147 @@ body {
   flex-wrap: wrap;
 }
 
+/* 状態は色ではなく丸の形で分ける。点いている・くすんでいる・空 */
 .bk-status {
-  font-size: 13px;
-  padding: 2px 10px;
-  border-radius: 999px;
-  border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bk-s2);
+  font-size: 12px;
+  letter-spacing: 0.12em;
 }
 
-.bk-status-pending {
-  color: var(--bk-hold);
-  background: var(--bk-hold-bg);
-  border-color: #3a332c;
+.bk-status::before {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  background: currentColor;
 }
 
 .bk-status-confirmed {
   color: var(--bk-lamp);
-  background: var(--bk-lamp-bg);
-  border-color: var(--bk-lamp-dim);
 }
 
-.bk-status-rejected {
-  color: var(--bk-full);
-  background: var(--bk-full-bg);
-  border-color: #452724;
+.bk-status-confirmed::before {
+  box-shadow: 0 0 9px rgba(240, 190, 110, 0.65);
 }
 
+.bk-status-pending {
+  color: var(--bk-ink-dim);
+}
+
+.bk-status-rejected,
 .bk-status-cancelled,
 .bk-status-past {
   color: var(--bk-ink-faint);
-  border-color: var(--bk-line2);
+}
+
+.bk-status-rejected::before,
+.bk-status-cancelled::before,
+.bk-status-past::before {
+  background: none;
 }
 
 .bk-mycard-code {
+  font-family: var(--bk-mincho);
   font-size: 13px;
   color: var(--bk-ink-faint);
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
   font-variant-numeric: tabular-nums;
 }
 
 .bk-mycard-when {
-  font-size: 17px;
+  font-family: var(--bk-mincho);
+  font-size: 19px;
+  letter-spacing: 0.02em;
   font-variant-numeric: tabular-nums;
   margin-top: var(--bk-s1);
 }
 
 .bk-mycard-cast {
-  font-family: var(--bk-serif);
   color: var(--bk-ink-dim);
-  letter-spacing: 0.04em;
+  font-size: 14px;
+  letter-spacing: 0.06em;
 }
 
 .bk-mycard-name {
-  font-family: var(--bk-sans);
   font-size: 14px;
 }
 
 .bk-mycard-msg {
   margin: var(--bk-s2) 0 0;
-  padding: var(--bk-s2) var(--bk-s3);
-  border-radius: 8px;
-  background: var(--bk-ground);
-  border: 1px solid var(--bk-line);
+  padding-left: var(--bk-s3);
+  border-left: 1px solid var(--bk-rule-lit);
   color: var(--bk-ink-dim);
-  font-size: 14px;
+  font-size: 13.5px;
+  line-height: 1.8;
 }
 
 .bk-mycard-actions {
   display: flex;
   justify-content: flex-end;
-  margin-top: var(--bk-s2);
+  gap: var(--bk-s2);
+  margin-top: var(--bk-s3);
 }
 
 /* ---------- 予約番号での照会 ---------- */
 
 .bk-lookup {
-  padding-top: var(--bk-s5);
-  border-top: 1px solid var(--bk-line);
   display: flex;
   flex-direction: column;
-  gap: var(--bk-s2);
+  gap: var(--bk-s3);
+}
+
+/* 番号で引き当てた1件。入力欄にくっつかないよう間を空ける */
+.bk-lookup > .bk-mycard {
+  margin-top: var(--bk-s2);
 }
 
 .bk-lookup-lead {
   margin: 0;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--bk-ink-dim);
 }
 
 .bk-lookup-row {
   display: flex;
-  gap: var(--bk-s2);
+  align-items: flex-end;
+  gap: var(--bk-s3);
 }
 
 .bk-lookup-row .bk-input {
   flex: 1;
-  letter-spacing: 0.1em;
+  font-family: var(--bk-mincho);
+  font-size: 17px;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .bk-lookup-row .bk-btn {
   flex: none;
   width: auto;
-  padding: var(--bk-s3) var(--bk-s5);
+  padding: var(--bk-s2) var(--bk-s5);
 }
 
 .bk-lookup-miss {
   margin: 0;
-  color: var(--bk-ink-dim);
-  font-size: 14px;
-}
-
-/* ---------- ボタンの追加種類 ---------- */
-
-.bk-btn-danger {
-  background: var(--bk-full-bg);
-  border-color: #452724;
-  color: var(--bk-full);
-}
-
-.bk-btn-danger:hover:not(:disabled) {
-  background: #2e1c1a;
-}
-
-.bk-btn-small {
-  flex: none;
-  padding: var(--bk-s2) var(--bk-s4);
-  font-size: 14px;
-}
-
-.bk-btn-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  text-decoration: none;
-}
-
-.bk-done-actions {
-  display: flex;
-  flex-direction: column;
-  gap: var(--bk-s2);
-  margin-top: var(--bk-s2);
-}
-
-@media (min-width: 480px) {
-  .bk-done-actions {
-    flex-direction: row;
-  }
+  color: var(--bk-ink-faint);
+  font-size: 13.5px;
 }
 
 /* ---------- お知らせの受け取り ---------- */
 
 .bk-push {
-  padding: var(--bk-s4);
-  border: 1px solid var(--bk-line);
-  border-radius: 10px;
-  background: var(--bk-surface);
   display: flex;
   flex-direction: column;
   align-items: flex-start;
   gap: var(--bk-s2);
 }
 
-.bk-push .bk-sub-h {
-  margin: 0;
-}
-
 .bk-push-lead {
   margin: 0;
-  font-size: 14px;
+  font-size: 13.5px;
   color: var(--bk-ink-dim);
 }
 
@@ -871,11 +915,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--bk-s2);
-  padding: var(--bk-s3);
-  border-radius: 8px;
-  background: var(--bk-ground);
-  border: 1px solid var(--bk-line);
-  font-size: 14px;
+  padding-left: var(--bk-s3);
+  border-left: 1px solid var(--bk-rule-lit);
+  font-size: 13.5px;
   color: var(--bk-ink-dim);
 }
 
@@ -885,22 +927,24 @@ body {
 
 .bk-push-ios strong {
   color: var(--bk-ink);
-  font-weight: 600;
+  font-weight: 500;
 }
 
 .bk-push-share {
   display: inline-block;
-  margin: 0 4px;
+  margin: 0 3px;
   padding: 0 6px;
-  border-radius: 4px;
-  border: 1px solid var(--bk-line2);
+  border-radius: 3px;
+  border: 1px solid var(--bk-rule-lit);
   color: var(--bk-lamp);
 }
 
 .bk-push-ios-note {
   color: var(--bk-ink-faint);
-  font-size: 13px;
+  font-size: 12.5px;
 }
+
+/* ---------- 入力の細かいところ ---------- */
 
 /* 人には見せない入力欄。display:none だと読み飛ばすプログラムがあるので、
    画面の外へ追い出す形で隠す */
@@ -925,14 +969,13 @@ body {
 
 /* 入力欄の下に置く補足。何に使う情報なのかを、その場で伝える */
 .bk-field-hint {
-  margin: calc(var(--bk-s2) * -1) 0 0;
-  font-size: 13px;
-  line-height: 1.7;
+  margin: var(--bk-s1) 0 0;
+  font-size: 12.5px;
+  line-height: 1.75;
   color: var(--bk-ink-faint);
 }
 
-/* ---------- お名前（ご一緒の方を＋で追加） ---------- */
-
+/* お名前（ご一緒の方を＋で追加） */
 .bk-names {
   display: flex;
   flex-direction: column;
@@ -941,8 +984,8 @@ body {
 
 .bk-name-row {
   display: flex;
-  gap: var(--bk-s2);
-  align-items: center;
+  gap: var(--bk-s3);
+  align-items: flex-end;
 }
 
 .bk-name-row .bk-input {
@@ -950,23 +993,25 @@ body {
   min-width: 0;
 }
 
+/* 入力欄と同じ線の上に置いて、欄の続きに見えるようにする */
 .bk-name-btn {
   flex: none;
-  width: 46px;
-  align-self: stretch;
-  border-radius: 8px;
-  border: 1px solid var(--bk-line2);
-  background: var(--bk-surface2);
+  width: 40px;
+  height: 41px;
+  border: 0;
+  border-bottom: 1px solid var(--bk-rule-lit);
+  border-radius: 0;
+  background: transparent;
   color: var(--bk-ink-dim);
   font-family: inherit;
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1;
   cursor: pointer;
   transition: border-color 0.15s, color 0.15s;
 }
 
 .bk-name-btn:hover {
-  border-color: var(--bk-lamp-dim);
+  border-bottom-color: var(--bk-lamp);
   color: var(--bk-lamp);
 }
 
@@ -975,7 +1020,7 @@ body {
   outline-offset: 2px;
 }
 
-/* 変更申請のシートは空き状況のマス目が入るので広めに取る */
+/* 変更申請のシートは席表が入るので広めに取る */
 .bk-sheet-wide {
   max-width: 620px;
 }
@@ -987,26 +1032,62 @@ body {
 }
 
 .bk-change-day .bk-day-title {
-  font-size: 16px;
+  font-size: 20px;
 }
 
-.bk-mycard-actions {
-  gap: var(--bk-s2);
+.bk-change-day .bk-day-dow {
+  font-size: 12.5px;
 }
 
-/* 店からの案内。枠の一覧より先に読ませたいが、主役は枠なので静かに置く */
-.bk-notice {
-  padding: var(--bk-s4);
-  border: 1px solid var(--bk-line);
-  border-left: 3px solid var(--bk-lamp-dim);
-  border-radius: 10px;
-  background: var(--bk-surface);
-  color: var(--bk-ink-dim);
-  font-size: 14.5px;
+/* ---------- 画面の幅 ---------- */
+
+@media (min-width: 560px) {
+  .bk-overlay {
+    align-items: center;
+    padding: var(--bk-s4);
+  }
+
+  .bk-sheet {
+    border: 1px solid var(--bk-rule-lit);
+    border-top: 1px solid var(--bk-lamp-deep);
+    border-radius: 4px;
+  }
+
+  .bk-done-actions {
+    flex-direction: row;
+  }
 }
 
-.bk-notice p {
-  margin: 0;
-  min-height: 1em;   /* 空行も行として残す */
-  line-height: 1.85;
+/* 名前の欄を左に置ききれない幅では、名前を1行使って上に出す */
+@media (max-width: 439px) {
+  .bk-row {
+    grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr));
+    padding: var(--bk-s3) 0;
+  }
+
+  .bk-row-cast {
+    grid-column: 1 / -1;
+    color: var(--bk-ink-dim);
+    font-size: 13px;
+  }
+
+  .bk-day-title {
+    font-size: 25px;
+  }
+
+  .bk-mark {
+    font-size: 32px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bk-cell,
+  .bk-btn,
+  .bk-input {
+    transition: none;
+  }
+
+  .bk-cell-open {
+    animation: none;
+  }
 }
