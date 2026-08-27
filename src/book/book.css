@@ -1078,6 +1078,11 @@ body {
   .bk-mark {
     font-size: 32px;
   }
+
+  .bk-quote-note {
+    margin-left: 0;
+    flex-basis: 100%;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -1135,9 +1140,12 @@ body {
   letter-spacing: 0.06em;
 }
 
+/* 「40万G / お一人」「21:00 〜 21:30」。
+   途中で折り返すと時刻の範囲が読みにくくなるので、1行のままにする */
 .bk-chip-sub {
   font-size: 11px;
   letter-spacing: 0.04em;
+  white-space: nowrap;
   font-variant-numeric: tabular-nums;
 }
 
