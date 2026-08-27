@@ -86,16 +86,18 @@ function slotRange(slotTime: string, durationMin = 60): string {
   return `${slotTime} 〜 ${String(Math.floor(end / 60)).padStart(2, '0')}:${String(end % 60).padStart(2, '0')}`
 }
 
-// 予約の開始時刻から「21:00 〜 22:00」を作る（自分の予約一覧で使う）
-function rangeFromStart(iso: string): string {
+// 予約の開始時刻から「21:00 〜 22:00」を作る（自分の予約一覧で使う）。
+// お客様が30分を選ぶこともあるので、長さは呼ぶ側から渡してもらう
+function rangeFromStart(iso: string, durationMin = 60): string {
   const d = new Date(iso)
   if (isNaN(d.getTime())) return ''
   const jst = new Date(d.getTime() + 9 * 3600 * 1000)
   const h = jst.getUTCHours()
-  const m = String(jst.getUTCMinutes()).padStart(2, '0')
   // 深夜は 24:20 のように続けて書く。日付が変わったように見せない
-  const show = (n: number) => String(n < 4 ? n + 24 : n).padStart(2, '0')
-  return `${show(h)}:${m} 〜 ${show(h + 1)}:${m}`
+  const startMin = (h < 4 ? h + 24 : h) * 60 + jst.getUTCMinutes()
+  const endMin = startMin + Math.max(30, durationMin || 60)
+  const fmt = (t: number) => `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`
+  return `${fmt(startMin)} 〜 ${fmt(endMin)}`
 }
 
 const STATE_LABEL: Record<PublicSlot['state'], string> = {
@@ -943,7 +945,7 @@ function MyReservations() {
                 <h2 className="bk-sheet-title">日時を変更する</h2>
                 <p className="bk-sheet-sub">
                   今のご予約　{changing.businessDate && labelDay(changing.businessDate)}
-                  {rangeFromStart(changing.startsAt)}　{changing.castName}
+                  {rangeFromStart(changing.startsAt, changing.durationMin)}　{changing.castName}
                 </p>
                 <p className="bk-field-hint">
                   変更したい枠を選んでください。すぐには変わらず、店が承認してから入れ替わります。
@@ -984,7 +986,7 @@ function MyReservations() {
             <h2 className="bk-sheet-title">お申し込みを取り消す</h2>
             <p className="bk-sheet-sub">
               {cancelling.businessDate && labelDay(cancelling.businessDate)}
-              {rangeFromStart(cancelling.startsAt)}　{cancelling.castName}
+              {rangeFromStart(cancelling.startsAt, cancelling.durationMin)}　{cancelling.castName}
             </p>
             <p className="bk-done-lead">
               取り消すと、この枠は他の方がお申し込みできる状態に戻ります。元には戻せません。
@@ -1114,7 +1116,7 @@ function MyCard({
       </div>
 
       <div className="bk-mycard-when">
-        {r.businessDate && labelDay(r.businessDate)}　{rangeFromStart(r.startsAt)}
+        {r.businessDate && labelDay(r.businessDate)}　{rangeFromStart(r.startsAt, r.durationMin)}
       </div>
       <div className="bk-mycard-cast">{r.castName || 'フリー'}　<span className="bk-mycard-name">{r.customerName} 様</span></div>
 

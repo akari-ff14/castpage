@@ -747,17 +747,13 @@ export default function ReservationTab({
                 <span>{r.ルーム}</span>
               </div>
             )}
-            {/* お客様がご自分で選んだ席と長さ。店内で入れた予約には無い */}
-            {(r.希望席表示名 || r.source === 'customer') && (
+            {/* お客様がご自分で選んだ席。長さは上の「対応時間」に出ているので繰り返さない。
+                店内で入れた予約は通常/VIP がルームで決まるため、ここには何も出ない */}
+            {r.希望席表示名 && (
               <div className="res-row">
                 <span className="muted">ご希望</span>
-                <span>
-                  {r.希望席表示名 && (
-                    <span className={`badge ${r.希望席 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
-                      {r.希望席表示名}
-                    </span>
-                  )}
-                  <span style={{ marginLeft: r.希望席表示名 ? 8 : 0 }}>{r.予約時間}分</span>
+                <span className={`badge ${r.希望席 === 'vip' ? 'badge-vip' : 'badge-normal'}`}>
+                  {r.希望席表示名}
                 </span>
               </div>
             )}
