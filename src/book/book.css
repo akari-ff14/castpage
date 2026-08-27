@@ -1222,3 +1222,9 @@ body {
   color: var(--bk-ink-dim);
   font-variant-numeric: tabular-nums;
 }
+
+.bk-done-dur {
+  margin-left: var(--bk-s3);
+  color: var(--bk-ink-faint);
+  font-size: 13px;
+}

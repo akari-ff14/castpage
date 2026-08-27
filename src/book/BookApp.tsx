@@ -372,7 +372,10 @@ function SlotPicker() {
             </div>
             <div>
               <dt>時間</dt>
-              <dd>{slotRange(done.slotTime, done.durationMin)}　（{done.durationMin}分）</dd>
+              <dd>
+                {slotRange(done.slotTime, done.durationMin)}
+                <span className="bk-done-dur">（{done.durationMin}分）</span>
+              </dd>
             </div>
             <div>
               <dt>キャスト</dt>
