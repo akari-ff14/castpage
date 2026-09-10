@@ -812,6 +812,11 @@ export default function ReservationTab({
                 >
                   <option value="">フリー（指名なし）</option>
                   {casts.map((c) => <option key={c} value={c}>{c}</option>)}
+                  {/* 選択肢に無い担当者（スタッフ・退店したキャスト）が入っている予約でも、
+                      選択欄が空 = フリーに見えないよう、その名前を選択肢として足す */}
+                  {form.castName && !casts.includes(form.castName) && (
+                    <option value={form.castName}>{form.castName}</option>
+                  )}
                 </select>
               </div>
             </div>

@@ -182,7 +182,7 @@ function DiscordCard() {
         <label className="form-label" htmlFor="discord-url">Discord に予約のお知らせを送る（任意）</label>
         <p className="muted small" style={{ marginTop: 0 }}>
           お客様の動き（新しい申込・日時変更の申請・取り消し）と、
-          店側の動き（予約確定・対応開始・延長・対応終了）を、店の Discord に流します。
+          店側の動き（予約追加・予約確定・対応開始・延長・対応終了）を、店の Discord に流します。
           種類ごとに色分けされます。設定しなければ何も送りません。
         </p>
         <p className="muted small" style={{ marginTop: 0 }}>
@@ -193,6 +193,7 @@ function DiscordCard() {
           <span className="discord-chip" style={{ '--chip': '#e0b464' } as CSSProperties}>申込</span>
           <span className="discord-chip" style={{ '--chip': '#9aa0d8' } as CSSProperties}>日時変更</span>
           <span className="discord-chip" style={{ '--chip': '#9c5f57' } as CSSProperties}>取り消し</span>
+          <span className="discord-chip" style={{ '--chip': '#4aa8b0' } as CSSProperties}>予約追加</span>
           <span className="discord-chip" style={{ '--chip': '#5bb98a' } as CSSProperties}>予約確定</span>
           <span className="discord-chip" style={{ '--chip': '#5b8fd0' } as CSSProperties}>対応開始</span>
           <span className="discord-chip" style={{ '--chip': '#dd7a33' } as CSSProperties}>延長</span>

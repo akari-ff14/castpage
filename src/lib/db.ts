@@ -166,7 +166,6 @@ interface SessionRow {
   cancelled: boolean
   created_at: string
   updated_at: string
-  cast?: { name: string } | null
   room?: { name: string } | null
 }
 
@@ -199,6 +198,27 @@ async function loadCasts() {
     role: (c.role === 'staff' ? 'staff' : 'cast') as CastRole,
   }))
   return _castsCache
+}
+
+// 予約・履歴・売上に出るキャスト名の解決用（cast_id → 名前）。
+//
+// casts テーブルの RLS は「管理者、または自分の行だけ」なので、cast:casts(name) の
+// 埋め込みは非管理者だと他人の行が null で返る。名前が空になった予約は画面上
+// 「フリー（指名なし）」に見えてしまうため、名前は全 authenticated が読める
+// casts_public から引く。過去のデータに辞めた人の名前も要るので active では絞らない
+let _castNamesCache: Map<string, string> | null = null
+
+async function loadCastNames(): Promise<Map<string, string>> {
+  if (_castNamesCache) return _castNamesCache
+  const { data, error } = await supabase.from('casts_public').select('id, name')
+  if (error) throw error
+  _castNamesCache = new Map((data || []).map((c) => [String(c.id), String(c.name)]))
+  return _castNamesCache
+}
+
+// cast_id からキャスト名。フリー（指名なし）や不明な id は空文字
+function castNameOf(names: Map<string, string>, castId: string | null | undefined): string {
+  return castId ? names.get(castId) || '' : ''
 }
 
 async function loadRooms() {
@@ -240,15 +260,20 @@ async function roomIdByName(name: string): Promise<string | null> {
 
 function invalidateCaches() {
   _castsCache = null
+  _castNamesCache = null
   _roomsCache = null
   _pricingCache = null
 }
 
-function sessionRowToShape(row: SessionRow, pricing: Map<string, PricingEntry>): SessionShape {
+function sessionRowToShape(
+  row: SessionRow,
+  pricing: Map<string, PricingEntry>,
+  castNames: Map<string, string>,
+): SessionShape {
   const pr = pricing.get(row.service_type)
   return {
     session_id: row.id,
-    対応者: row.cast?.name || '',
+    対応者: castNameOf(castNames, row.cast_id),
     ルーム: row.room?.name || '',
     顧客名: row.customer_names,
     顧客数: row.customer_count,
@@ -269,7 +294,7 @@ function sessionRowToShape(row: SessionRow, pricing: Map<string, PricingEntry>):
   }
 }
 
-const SESSION_SELECT = 'id, cast_id, room_id, service_type, customer_names, customer_count, base_price, option_price, extend_count, option_count, started_at, ended_at, finished, note, revenue, cancelled, created_at, updated_at, cast:casts(name), room:rooms(name)'
+const SESSION_SELECT = 'id, cast_id, room_id, service_type, customer_names, customer_count, base_price, option_price, extend_count, option_count, started_at, ended_at, finished, note, revenue, cancelled, created_at, updated_at, room:rooms(name)'
 
 // ============================================================
 // API: マスタ / 一覧
@@ -277,7 +302,7 @@ const SESSION_SELECT = 'id, cast_id, room_id, service_type, customer_names, cust
 
 export async function getActiveSession(castName: string): Promise<SessionShape | null> {
   const cId = await castIdByName(castName)
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data, error } = await supabase
     .from('sessions')
     .select(SESSION_SELECT)
@@ -287,7 +312,7 @@ export async function getActiveSession(castName: string): Promise<SessionShape |
     .limit(1)
     .maybeSingle()
   if (error) throw error
-  return data ? sessionRowToShape(data as unknown as SessionRow, pricing) : null
+  return data ? sessionRowToShape(data as unknown as SessionRow, pricing, castNames) : null
 }
 
 // 接客担当として選べる人の一覧。スタッフは接客をしないので出さない
@@ -307,14 +332,15 @@ export async function getPricing(): Promise<PricingEntry[]> {
 }
 
 export async function getCustomers(): Promise<CustomerRecord[]> {
+  const castNames = await loadCastNames()
   const { data, error } = await supabase
     .from('customer_visits')
-    .select('id, session_id, customer_name, visited_at, created_at, cast:casts(name)')
+    .select('id, session_id, cast_id, customer_name, visited_at, created_at')
     .order('visited_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
     session_id: r.session_id || '',
-    対応キャスト: (r.cast as { name?: string } | null)?.name || '',
+    対応キャスト: castNameOf(castNames, r.cast_id),
     対応日: r.visited_at,
     顧客名: r.customer_name,
     作成日時: r.created_at,
@@ -332,15 +358,15 @@ export async function getBlacklist(): Promise<BlEntry[]> {
 }
 
 export async function getReservations(): Promise<ReservationShape[]> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, status, source, service_type, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, cast_id, customer_name, reservation_price, duration_min, reserved_at, note, converted_at, cancelled, status, source, service_type, created_at, updated_at, room:rooms(name)')
     .order('created_at', { ascending: false })
   if (error) throw error
   return (data || []).map((r) => ({
     reservation_id: r.id,
-    キャスト名: (r.cast as { name?: string } | null)?.name || '',
+    キャスト名: castNameOf(castNames, r.cast_id),
     顧客名: r.customer_name,
     予約金額: Number(r.reservation_price),
     予約時間: Number(r.duration_min) || 60,
@@ -359,7 +385,7 @@ export async function getReservations(): Promise<ReservationShape[]> {
 }
 
 export async function getHistory(params?: { year?: number; month?: number }): Promise<SessionShape[]> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   // 並び・月フィルタは started_at（実際の接客日時）基準。
   // created_at 基準だと過去分を後から手入力した際に入力日で並んでしまい、時系列が崩れる
   let q = supabase
@@ -379,7 +405,7 @@ export async function getHistory(params?: { year?: number; month?: number }): Pr
   }
   const { data, error } = await q
   if (error) throw error
-  return (data || []).map((r) => sessionRowToShape(r as unknown as SessionRow, pricing))
+  return (data || []).map((r) => sessionRowToShape(r as unknown as SessionRow, pricing, castNames))
 }
 
 export async function checkRoomAvailability(roomName: string): Promise<{ available: boolean; usedBy?: string }> {
@@ -387,12 +413,12 @@ export async function checkRoomAvailability(roomName: string): Promise<{ availab
   if (!rId) return { available: true }
   const { data, error } = await supabase
     .from('sessions')
-    .select('cast:casts(name)')
+    .select('cast_id')
     .eq('room_id', rId)
     .eq('finished', false)
     .maybeSingle()
   if (error) throw error
-  if (data) return { available: false, usedBy: (data.cast as { name?: string } | null)?.name || '' }
+  if (data) return { available: false, usedBy: castNameOf(await loadCastNames(), data.cast_id) }
   return { available: true }
 }
 
@@ -469,7 +495,7 @@ export async function startSession(payload: {
   const slots = Math.max(1, Number(payload.presetSlots) || 1)
   const cId = await castIdByName(payload.castName)
   const rId = payload.room ? await roomIdByName(payload.room) : null
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const svc = pricing.get(payload.serviceType)
   const opt = pricing.get('option')
   if (!svc) throw new Error('接客種別の料金設定が見つかりません')
@@ -529,14 +555,14 @@ export async function startSession(payload: {
   }
 
   notifyShopEvent('start', { sessionId: inserted.id as string })
-  return sessionRowToShape(inserted as unknown as SessionRow, pricing)
+  return sessionRowToShape(inserted as unknown as SessionRow, pricing, castNames)
 }
 
 export async function extendSession(sessionId: string): Promise<SessionShape> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, base_price, customer_count, customer_names, extend_count, ended_at, revenue, finished, cast_id, cast:casts(name)')
+    .select('id, base_price, customer_count, customer_names, extend_count, ended_at, revenue, finished, cast_id')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -555,17 +581,17 @@ export async function extendSession(sessionId: string): Promise<SessionShape> {
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
-  const castName = (cur.cast as { name?: string } | null)?.name || ''
+  const castName = castNameOf(castNames, cur.cast_id)
   await logActivity('extend', castName, sessionId, cur.customer_names || null, cur.cast_id)
   notifyShopEvent('extend', { sessionId })
-  return sessionRowToShape(data as unknown as SessionRow, pricing)
+  return sessionRowToShape(data as unknown as SessionRow, pricing, castNames)
 }
 
 export async function addOption(sessionId: string): Promise<SessionShape> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, option_price, option_count, revenue, finished, customer_names, cast_id, cast:casts(name)')
+    .select('id, option_price, option_count, revenue, finished, customer_names, cast_id')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -581,17 +607,17 @@ export async function addOption(sessionId: string): Promise<SessionShape> {
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
-  const castName = (cur.cast as { name?: string } | null)?.name || ''
+  const castName = castNameOf(castNames, cur.cast_id)
   await logActivity('option', castName, sessionId, cur.customer_names || null, cur.cast_id)
-  return sessionRowToShape(data as unknown as SessionRow, pricing)
+  return sessionRowToShape(data as unknown as SessionRow, pricing, castNames)
 }
 
 // 延長を1回取り消す（終了予定を30分前倒し、収益再計算）。延長回数0なら何もしない
 export async function reduceExtend(sessionId: string): Promise<SessionShape> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, base_price, option_price, customer_count, extend_count, option_count, ended_at, finished, customer_names, cast_id, cast:casts(name)')
+    .select('id, base_price, option_price, customer_count, extend_count, option_count, ended_at, finished, customer_names, cast_id')
     .eq('id', sessionId)
     .single()
   if (e1) throw e1
@@ -611,12 +637,12 @@ export async function reduceExtend(sessionId: string): Promise<SessionShape> {
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
-  return sessionRowToShape(data as unknown as SessionRow, pricing)
+  return sessionRowToShape(data as unknown as SessionRow, pricing, castNames)
 }
 
 // オプションを1回取り消す（収益再計算）。オプション回数0なら何もしない
 export async function reduceOption(sessionId: string): Promise<SessionShape> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
     .select('id, base_price, option_price, customer_count, extend_count, option_count, finished')
@@ -637,7 +663,7 @@ export async function reduceOption(sessionId: string): Promise<SessionShape> {
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
-  return sessionRowToShape(data as unknown as SessionRow, pricing)
+  return sessionRowToShape(data as unknown as SessionRow, pricing, castNames)
 }
 
 export async function finishSession(payload: {
@@ -646,7 +672,7 @@ export async function finishSession(payload: {
 }): Promise<{ breakdown: FinishBreakdown }> {
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
-    .select('id, base_price, option_price, extend_count, option_count, customer_count, revenue, finished, customer_names, cast_id, cast:casts(name)')
+    .select('id, base_price, option_price, extend_count, option_count, customer_count, revenue, finished, customer_names, cast_id')
     .eq('id', payload.sessionId)
     .single()
   if (e1) throw e1
@@ -657,7 +683,7 @@ export async function finishSession(payload: {
   const { error } = await supabase.from('sessions').update(updates).eq('id', payload.sessionId)
   if (error) throw error
 
-  const castName = (cur.cast as { name?: string } | null)?.name || ''
+  const castName = castNameOf(await loadCastNames(), cur.cast_id)
   await logActivity('end', castName, payload.sessionId, cur.customer_names || null, cur.cast_id)
   notifyShopEvent('finish', { sessionId: payload.sessionId })
 
@@ -703,9 +729,10 @@ async function assertNoReservationConflict(params: {
   // 前後24時間の予約だけ見れば重複判定には十分
   const fromIso = new Date(startMs - 24 * 3600 * 1000).toISOString()
   const toIso = new Date(startMs + 24 * 3600 * 1000).toISOString()
+  const castNames = await loadCastNames()
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, cast_id, customer_name, reserved_at, duration_min, cancelled, converted_at, cast:casts(name)')
+    .select('id, cast_id, customer_name, reserved_at, duration_min, cancelled, converted_at')
     .gte('reserved_at', fromIso)
     .lte('reserved_at', toIso)
   if (error) throw error
@@ -721,7 +748,7 @@ async function assertNoReservationConflict(params: {
     const re = rs + (Number(r.duration_min) || 60) * 60 * 1000
     if (!(rs < endMs && startMs < re)) continue  // 重なっていない
 
-    const castLabel = (r.cast as { name?: string } | null)?.name || 'キャスト'
+    const castLabel = castNameOf(castNames, r.cast_id) || 'キャスト'
     const range = `${fmtDate(r.reserved_at)} ${fmtBizTime(rs)}〜${fmtBizTime(re)}`
     if (params.castId && r.cast_id === params.castId) {
       throw new Error(
@@ -773,12 +800,17 @@ export async function addReservation(payload: {
       note: payload.note || '',
       cancelled: !!payload.cancelled,
     })
-    .select('id, customer_name, reservation_price, duration_min, reserved_at, note, cancelled, status, source, created_at, updated_at, cast:casts(name), room:rooms(name)')
+    .select('id, cast_id, customer_name, reservation_price, duration_min, reserved_at, note, cancelled, status, source, created_at, updated_at, room:rooms(name)')
     .single()
   if (error) throw error
+  // 店内で入れた予約も Discord に流す（帯の色はお客様申込の「予約確定」と分けてある）。
+  // キャンセル記録は予約が入ったわけではないので送らない
+  if (!payload.cancelled) {
+    notifyShopEvent('staff_reserved', { reservationId: String(data.id) })
+  }
   return {
     reservation_id: data.id,
-    キャスト名: (data.cast as { name?: string } | null)?.name || '',
+    キャスト名: castNameOf(await loadCastNames(), data.cast_id),
     顧客名: data.customer_name,
     予約金額: Number(data.reservation_price),
     予約時間: Number(data.duration_min) || 60,
@@ -1254,7 +1286,7 @@ function getBusinessDayLabel(busStart: Date): string {
 // 待機保証はキャストごとの設定 (casts.guarantee_amount、既定0)。
 // その営業日に1件でも記録があるキャストにのみ加算する（給与 = 待機保証 + 席料50% + オプション全額）
 export async function getRevenueStatus(params?: { businessDay?: string }): Promise<RevenueStatus> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const castsMaster = await loadCasts()
   const guaranteeByName = new Map(castsMaster.map((c) => [c.name, c.guarantee_amount]))
   const busStart = getBusinessDayStart(params?.businessDay)
@@ -1263,7 +1295,7 @@ export async function getRevenueStatus(params?: { businessDay?: string }): Promi
   // created_at 基準だと、後から手入力した過去分が「入力した日」に計上されてしまう
   const { data, error } = await supabase
     .from('sessions')
-    .select('id, base_price, option_price, extend_count, option_count, customer_count, customer_names, service_type, revenue, started_at, cancelled, cast:casts(name)')
+    .select('id, cast_id, base_price, option_price, extend_count, option_count, customer_count, customer_names, service_type, revenue, started_at, cancelled')
     .eq('finished', true)
     .gte('started_at', busStart.toISOString())
     .lt('started_at', busEnd.toISOString())
@@ -1273,7 +1305,7 @@ export async function getRevenueStatus(params?: { businessDay?: string }): Promi
   const castMap = new Map<string, { baseTotal: number; optTotal: number; count: number }>()
   const sessions: RevenueSessionRow[] = []
   for (const r of data || []) {
-    const cast = (r.cast as { name?: string } | null)?.name
+    const cast = castNameOf(castNames, r.cast_id)
     if (!cast) continue
     sessions.push({
       session_id: r.id,
@@ -1440,14 +1472,15 @@ export interface ChestSummary {
 }
 
 export async function getCompanyChest(): Promise<ChestSummary> {
+  const castNames = await loadCastNames()
   const { data, error } = await supabase
     .from('company_chest')
-    .select('id, amount, memo, created_at, cast:casts(name)')
+    .select('id, cast_id, amount, memo, created_at')
     .order('created_at', { ascending: false })
   if (error) throw error
   const list = (data || []).map((r) => ({
     log_id: r.id,
-    キャスト名: (r.cast as { name?: string } | null)?.name || '',
+    キャスト名: castNameOf(castNames, r.cast_id),
     金額: Number(r.amount),
     メモ: r.memo || '',
     作成日時: r.created_at,
@@ -1859,14 +1892,14 @@ export async function updatePricing(key: string, fields: Partial<{ label: string
 
 // 進行中の全セッション一覧（管理者用）
 export async function listAllActiveSessions(): Promise<SessionShape[]> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const { data, error } = await supabase
     .from('sessions')
     .select(SESSION_SELECT)
     .eq('finished', false)
     .order('created_at', { ascending: false })
   if (error) throw error
-  return (data || []).map((r) => sessionRowToShape(r as unknown as SessionRow, pricing))
+  return (data || []).map((r) => sessionRowToShape(r as unknown as SessionRow, pricing, castNames))
 }
 
 // 強制終了（破棄ではなく完了マーク）
@@ -1894,7 +1927,7 @@ export async function addHistorySession(payload: {
   note?: string
   cancelled?: boolean
 }): Promise<SessionShape> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   const cId = await castIdByName(payload.castName)
   const rId = payload.room ? await roomIdByName(payload.room) : null
   const names = payload.customerNames.map((s) => String(s || '').trim()).filter(Boolean)
@@ -1971,7 +2004,7 @@ export async function addHistorySession(payload: {
   if (!payload.cancelled) {
     await logActivity('record', payload.castName, data.id, joined || null, cId)
   }
-  return sessionRowToShape(data as unknown as SessionRow, pricing)
+  return sessionRowToShape(data as unknown as SessionRow, pricing, castNames)
 }
 
 // 完了セッションの編集 — 全項目対応で収益自動再計算
@@ -1993,7 +2026,7 @@ export async function updateHistorySession(
     note: string
   }>,
 ): Promise<SessionShape> {
-  const pricing = await loadPricing()
+  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   // 現在の値を取得
   const { data: cur, error: e1 } = await supabase
     .from('sessions')
@@ -2063,7 +2096,7 @@ export async function updateHistorySession(
     .select(SESSION_SELECT)
     .single()
   if (error) throw error
-  return sessionRowToShape(data as unknown as SessionRow, pricing)
+  return sessionRowToShape(data as unknown as SessionRow, pricing, castNames)
 }
 
 export async function deleteSession(sessionId: string): Promise<void> {
@@ -2189,12 +2222,12 @@ export async function setDiscordWebhook(url: string): Promise<void> {
   if (!r.ok) throw new Error(r.error || '保存できませんでした')
 }
 
-// 店側の動き（予約確定・対応開始・延長・対応終了）を Discord に流す。
+// 店側の動き（予約追加・予約確定・対応開始・延長・対応終了）を Discord に流す。
 //
 // おまけの通知なので、送れなくても本体の操作は成立している。
 // 承認や接客開始が Discord のせいで失敗したり待たされたりしないよう、
 // 待たずに投げっぱなしにして、失敗は握りつぶす。
-export type ShopEventKind = 'confirmed' | 'start' | 'extend' | 'finish'
+export type ShopEventKind = 'confirmed' | 'staff_reserved' | 'start' | 'extend' | 'finish'
 
 export function notifyShopEvent(
   kind: ShopEventKind,
