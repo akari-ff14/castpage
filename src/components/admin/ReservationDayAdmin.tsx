@@ -142,8 +142,9 @@ export default function ReservationDayAdmin() {
 
   useEffect(() => {
     load()
+    // スタッフは接客をしないので、出勤・枠のマス目には並べない
     listAllCasts()
-      .then((all) => setCasts(all.filter((c) => c.active)))
+      .then((all) => setCasts(all.filter((c) => c.active && c.role === 'cast')))
       .catch(() => {})
   }, [load])
 

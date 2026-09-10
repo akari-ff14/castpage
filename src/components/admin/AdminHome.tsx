@@ -35,6 +35,7 @@ interface Props {
 
 interface DerivedStats {
   activeCasts: number
+  activeStaff: number
   pendingInvites: number
   activeRooms: number
   vipRooms: number
@@ -65,6 +66,7 @@ function shortDate(isoDate: string | null): string {
 
 const EMPTY: DerivedStats = {
   activeCasts: 0,
+  activeStaff: 0,
   pendingInvites: 0,
   activeRooms: 0,
   vipRooms: 0,
@@ -116,7 +118,8 @@ export default function AdminHome({ onNavigate }: Props) {
       const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`
       const thisMonth = expenses.filter((e) => e.日付.startsWith(ym))
       setStats({
-        activeCasts: casts.filter((c) => c.active).length,
+        activeCasts: casts.filter((c) => c.active && c.role === 'cast').length,
+        activeStaff: casts.filter((c) => c.active && c.role === 'staff').length,
         pendingInvites: casts.filter((c) => c.invite_code && !c.user_id).length,
         activeRooms: rooms.filter((r) => r.active).length,
         vipRooms: rooms.filter((r) => r.active && r.vip).length,
@@ -172,11 +175,17 @@ export default function AdminHome({ onNavigate }: Props) {
           <StatusCard
             accent="gold"
             icon={<Users size={20} />}
-            title="キャスト"
+            title="キャスト・スタッフ"
             onClick={() => onNavigate('cast')}
             actionLabel="開く"
           >
-            <Kpi value={s ? `${s.activeCasts}人` : '—'} sub={s ? `招待コード未配布 ${s.pendingInvites}件` : '読み込み中…'} mutedIfZero={s?.activeCasts === 0} />
+            <Kpi
+              value={s ? `${s.activeCasts}人` : '—'}
+              sub={s
+                ? `スタッフ ${s.activeStaff}人 ／ 招待コード未配布 ${s.pendingInvites}件`
+                : '読み込み中…'}
+              mutedIfZero={s?.activeCasts === 0}
+            />
           </StatusCard>
 
           <StatusCard

@@ -12,6 +12,7 @@ import './WelcomeModal.css'
 interface Props {
   onClose: () => void
   castName: string
+  isStaff: boolean
 }
 
 interface Slide {
@@ -48,10 +49,40 @@ const SLIDES: Slide[] = [
   },
 ]
 
-export default function WelcomeModal({ onClose, castName }: Props) {
+// スタッフは接客をしないので、接客の操作説明を予約受付の説明に差し替える
+const STAFF_SLIDES: Slide[] = [
+  {
+    icon: HomeIcon,
+    title: 'ようこそ、対話店[灯] へ',
+    body: '左メニューから「ホーム」を選ぶと、承認待ちの申込・使用中ルーム・今日の予約・売上がひと目で確認できます。',
+  },
+  {
+    icon: Calendar,
+    title: 'お客様の申込を承認する',
+    body: '「予約」メニューの先頭に、お客様からの申込と日時変更の申請が並びます。承認するとお客様に確定が伝わります。受け付ける日そのものは「管理」→「受付日」で作ります。',
+  },
+  {
+    icon: Calendar,
+    title: '予約と顧客の管理',
+    body: '「予約」で店内の予約も登録・編集できます。「顧客」で過去にご来店いただいた方の履歴が確認でき、問題のあったお客さまは「ブラックリスト」へ。',
+  },
+  {
+    icon: TrendingUp,
+    title: '売上の確認',
+    body: '「売上」メニューで本日のキャスト別収益・給与・差額が確認できます。営業終了時のチェックにご活用ください。',
+  },
+  {
+    icon: ListChecks,
+    title: '迷ったらこの画面に戻りましょう',
+    body: 'すべての機能は左のメニューから自由に行き来できます。困ったらいつでも「ホーム」に戻ってください。',
+  },
+]
+
+export default function WelcomeModal({ onClose, castName, isStaff }: Props) {
   const [step, setStep] = useState(0)
-  const last = step === SLIDES.length - 1
-  const Slide = SLIDES[step]
+  const slides = isStaff ? STAFF_SLIDES : SLIDES
+  const last = step === slides.length - 1
+  const Slide = slides[step]
   const Icon = Slide.icon
 
   function next() {
@@ -69,7 +100,7 @@ export default function WelcomeModal({ onClose, castName }: Props) {
         <p className="welcome-body">{Slide.body}</p>
 
         <div className="welcome-dots" aria-hidden>
-          {SLIDES.map((_, i) => (
+          {slides.map((_, i) => (
             <span key={i} className={`welcome-dot ${i === step ? 'active' : ''}`} />
           ))}
         </div>

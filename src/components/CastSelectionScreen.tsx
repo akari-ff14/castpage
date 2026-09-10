@@ -32,10 +32,11 @@ export default function CastSelectionScreen({ onBound }: Props) {
     <div className="ml-overlay">
       <div className="ml-deco">✦ &nbsp; ✦ &nbsp; ✦</div>
       <div className="ml-title">対話店[灯]</div>
-      <div className="ml-sub">キャストを紐付けてください</div>
+      <div className="ml-sub">アカウントを紐付けてください</div>
       <div className="ml-card">
         <form onSubmit={submit} className="ml-form-inner">
-          <label className="form-label">キャスト名</label>
+          {/* スタッフ（接客しない運営）も同じ画面から紐付ける */}
+          <label className="form-label">お名前（キャスト名・スタッフ名）</label>
           <input
             type="text"
             className="form-input"
@@ -73,7 +74,7 @@ export default function CastSelectionScreen({ onBound }: Props) {
 
         <p className="muted ml-hint">
           初回のみ、管理者から伝達された招待コードを入力します。
-          紐付け後はあなたのアカウント (メールアドレス) にこのキャストが固定されます。
+          紐付け後はあなたのアカウント (メールアドレス) にこの登録が固定されます。
           間違えたときは管理者に連絡してください。
         </p>
 

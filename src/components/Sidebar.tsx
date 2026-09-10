@@ -32,11 +32,12 @@ interface NavItem {
   label: string
   icon: typeof Home
   adminOnly?: boolean
+  castOnly?: boolean  // スタッフ（接客をしない運営）には出さない
 }
 
 const MAIN_NAV: NavItem[] = [
   { id: 'home', label: 'ホーム', icon: Home },
-  { id: 'session', label: '接客', icon: MessageSquare },
+  { id: 'session', label: '接客', icon: MessageSquare, castOnly: true },
   { id: 'reservation', label: '予約', icon: Calendar },
   { id: 'history', label: '履歴', icon: ListChecks },
   { id: 'customer', label: '顧客', icon: Users },
@@ -54,6 +55,7 @@ interface Props {
   current: RouteId
   onNavigate: (id: RouteId) => void
   isAdmin: boolean
+  isStaff: boolean
   castName: string
   isOpen: boolean
   onClose: () => void
@@ -64,6 +66,7 @@ export default function Sidebar({
   current,
   onNavigate,
   isAdmin,
+  isStaff,
   castName,
   isOpen,
   onClose,
@@ -88,7 +91,9 @@ export default function Sidebar({
     onClose()  // モバイル時は閉じる、PC時はもともと開いていない扱い
   }
 
-  const visibleMain = MAIN_NAV.filter((i) => !i.adminOnly || isAdmin)
+  const visibleMain = MAIN_NAV.filter(
+    (i) => (!i.adminOnly || isAdmin) && (!i.castOnly || !isStaff),
+  )
 
   return (
     <>
@@ -157,7 +162,9 @@ export default function Sidebar({
           <div className="sidebar-user">
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{castName}</div>
-              {isAdmin && <div className="sidebar-user-role">管理者</div>}
+              {isStaff
+                ? <div className="sidebar-user-role">スタッフ</div>
+                : isAdmin && <div className="sidebar-user-role">管理者</div>}
             </div>
             <div className="sidebar-user-actions">
               <button

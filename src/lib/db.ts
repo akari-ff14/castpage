@@ -174,16 +174,21 @@ interface SessionRow {
 // マスタ参照キャッシュ（cast/room の name↔id 変換）
 // ============================================================
 
-let _castsCache: Array<{ id: string; name: string; guarantee_amount: number }> | null = null
+// cast = 接客するキャスト / staff = 接客せず予約受付などの運営を回すスタッフ
+export type CastRole = 'cast' | 'staff'
+
+let _castsCache: Array<{ id: string; name: string; guarantee_amount: number; role: CastRole }> | null = null
 let _roomsCache: Array<{ id: string; name: string; vip: boolean }> | null = null
 let _pricingCache: Map<string, PricingEntry> | null = null
 
+// キャッシュにはスタッフも含める（名前⇔id の解決に要る）。
+// 「誰を接客担当として選べるか」の絞り込みは getCastsAndRooms 側で行う
 async function loadCasts() {
   if (_castsCache) return _castsCache
   // casts_public ビュー経由 (invite_code を除外、RLS バイパスして全 authenticated に露出)
   const { data, error } = await supabase
     .from('casts_public')
-    .select('id, name, guarantee_amount')
+    .select('id, name, guarantee_amount, role')
     .eq('active', true)
     .order('name')
   if (error) throw error
@@ -191,6 +196,7 @@ async function loadCasts() {
     id: c.id,
     name: c.name,
     guarantee_amount: Number(c.guarantee_amount) || 0,
+    role: (c.role === 'staff' ? 'staff' : 'cast') as CastRole,
   }))
   return _castsCache
 }
@@ -284,10 +290,12 @@ export async function getActiveSession(castName: string): Promise<SessionShape |
   return data ? sessionRowToShape(data as unknown as SessionRow, pricing) : null
 }
 
+// 接客担当として選べる人の一覧。スタッフは接客をしないので出さない
+// （予約のキャスト欄・接客開始・履歴の対応者・設定タブのマスタ参照が全部ここを見ている）
 export async function getCastsAndRooms() {
   const [casts, rooms] = await Promise.all([loadCasts(), loadRooms()])
   return {
-    casts: casts.map((c) => c.name),
+    casts: casts.filter((c) => c.role === 'cast').map((c) => c.name),
     rooms: rooms.map((r) => r.name),
     roomsData: rooms.map((r) => ({ name: r.name, vip: r.vip ? 1 : 0 })),
   }
@@ -1333,6 +1341,7 @@ export async function getRevenueStatus(params?: { businessDay?: string }): Promi
 export interface MyCastInfo {
   name: string
   is_admin: boolean
+  role: CastRole
 }
 
 export async function getMyCast(): Promise<MyCastInfo | null> {
@@ -1340,12 +1349,12 @@ export async function getMyCast(): Promise<MyCastInfo | null> {
   if (!user) return null
   const { data, error } = await supabase
     .from('casts')
-    .select('name, is_admin')
+    .select('name, is_admin, role')
     .eq('user_id', user.id)
     .maybeSingle()
   if (error) throw error
   if (!data) return null
-  return { name: data.name, is_admin: !!data.is_admin }
+  return { name: data.name, is_admin: !!data.is_admin, role: data.role === 'staff' ? 'staff' : 'cast' }
 }
 
 // キャスト名 + 招待コードで自分のキャストを確定 (one-time use)
@@ -1356,12 +1365,12 @@ export async function bindMyCast(castName: string, inviteCode: string): Promise<
     p_code: inviteCode,
   })
   if (error) throw error
-  const r = data as { ok: boolean; name?: string; is_admin?: boolean; error?: string }
+  const r = data as { ok: boolean; name?: string; is_admin?: boolean; role?: string; error?: string }
   if (!r?.ok) {
     throw new Error(r?.error || 'キャスト名または招待コードが正しくありません')
   }
   invalidateCaches()
-  return { name: r.name!, is_admin: !!r.is_admin }
+  return { name: r.name!, is_admin: !!r.is_admin, role: r.role === 'staff' ? 'staff' : 'cast' }
 }
 
 // admin: 未紐付キャストの招待コード再発行
@@ -1755,12 +1764,13 @@ export interface CastAdminRow {
   note: string
   invite_code: string | null  // 未紐付キャストのみ値あり、紐付け済は NULL
   guarantee_amount: number    // 待機保証額（0 = なし）
+  role: CastRole              // staff は接客をしない（選択肢・売上集計から外れる）
 }
 
 export async function listAllCasts(): Promise<CastAdminRow[]> {
   const { data, error } = await supabase
     .from('casts')
-    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount')
+    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount, role')
     .order('active', { ascending: false })
     .order('name')
   if (error) throw error
@@ -1775,22 +1785,26 @@ export async function listAllCasts(): Promise<CastAdminRow[]> {
     note: c.note || '',
     invite_code: c.invite_code ?? null,
     guarantee_amount: Number(c.guarantee_amount) || 0,
+    role: c.role === 'staff' ? 'staff' : 'cast',
   }))
 }
 
-export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string; guarantee_amount?: number }): Promise<void> {
+// スタッフは待機保証を持たず、管理権限は DB のトリガで必ず true になる
+export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string; guarantee_amount?: number; role?: CastRole }): Promise<void> {
+  const role: CastRole = payload.role === 'staff' ? 'staff' : 'cast'
   const { error } = await supabase.from('casts').insert({
     name: payload.name,
-    is_admin: !!payload.is_admin,
+    is_admin: role === 'staff' ? true : !!payload.is_admin,
     active: payload.active !== false,
     note: payload.note || '',
-    guarantee_amount: Math.max(0, Number(payload.guarantee_amount) || 0),
+    guarantee_amount: role === 'staff' ? 0 : Math.max(0, Number(payload.guarantee_amount) || 0),
+    role,
   })
   if (error) throw error
   invalidateCaches()
 }
 
-export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null; guarantee_amount: number }>): Promise<void> {
+export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null; guarantee_amount: number; role: CastRole }>): Promise<void> {
   const { error } = await supabase.from('casts').update(fields).eq('id', id)
   if (error) throw error
   invalidateCaches()

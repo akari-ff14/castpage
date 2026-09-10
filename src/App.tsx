@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Session } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
-import { db, getMyCast } from './lib/db'
+import { db, getMyCast, type CastRole } from './lib/db'
 import { applyTheme, getStoredTheme, type ThemeName } from './lib/theme'
 import MagicLinkScreen from './components/MagicLinkScreen'
 import CastSelectionScreen from './components/CastSelectionScreen'
@@ -28,6 +28,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true)
   const [castName, setCastName] = useState<string | null>(null)
   const [isAdmin, setIsAdmin] = useState(false)
+  const [role, setRole] = useState<CastRole>('cast')
   const [castLoading, setCastLoading] = useState(false)
 
   useEffect(() => {
@@ -52,6 +53,7 @@ export default function App() {
     if (!userId) {
       setCastName(null)
       setIsAdmin(false)
+      setRole('cast')
       return
     }
     setCastLoading(true)
@@ -59,10 +61,12 @@ export default function App() {
       .then((info) => {
         setCastName(info?.name ?? null)
         setIsAdmin(info?.is_admin ?? false)
+        setRole(info?.role ?? 'cast')
       })
       .catch(() => {
         setCastName(null)
         setIsAdmin(false)
+        setRole('cast')
       })
       .finally(() => setCastLoading(false))
   }, [userId])
@@ -91,7 +95,10 @@ export default function App() {
       <CastSelectionScreen
         onBound={(name) => {
           setCastName(name)
-          getMyCast().then((info) => setIsAdmin(info?.is_admin ?? false))
+          getMyCast().then((info) => {
+            setIsAdmin(info?.is_admin ?? false)
+            setRole(info?.role ?? 'cast')
+          })
         }}
       />
     )
@@ -101,6 +108,7 @@ export default function App() {
     <Dashboard
       castName={castName}
       isAdmin={isAdmin}
+      isStaff={role === 'staff'}
       onLogout={async () => {
         await supabase.auth.signOut()
       }}
@@ -113,10 +121,12 @@ const WELCOMED_KEY = 'akari_welcomed'
 function Dashboard({
   castName,
   isAdmin,
+  isStaff,
   onLogout,
 }: {
   castName: string
   isAdmin: boolean
+  isStaff: boolean
   onLogout: () => void
 }) {
   const [route, setRoute] = useState<RouteId>('home')
@@ -131,6 +141,7 @@ function Dashboard({
       {showWelcome && (
         <WelcomeModal
           castName={castName}
+          isStaff={isStaff}
           onClose={() => {
             localStorage.setItem(WELCOMED_KEY, '1')
             setShowWelcome(false)
@@ -141,6 +152,7 @@ function Dashboard({
         current={route}
         onNavigate={setRoute}
         isAdmin={isAdmin}
+        isStaff={isStaff}
         castName={castName}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
@@ -161,8 +173,8 @@ function Dashboard({
         </header>
 
         <div className="app-content">
-          {route === 'home' && <HomeView castName={castName} onNavigate={setRoute} />}
-          {route === 'session' && (
+          {route === 'home' && <HomeView castName={castName} isStaff={isStaff} onNavigate={setRoute} />}
+          {route === 'session' && !isStaff && (
             <SessionTab
               castName={castName}
               onNavigate={(r) => setRoute(r)}

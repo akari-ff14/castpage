@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
-import { db, type SessionShape, type ReservationShape, type RevenueStatus } from '../lib/db'
+import { db, getPendingReservations, type PendingReservation, type SessionShape, type ReservationShape, type RevenueStatus } from '../lib/db'
 import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
-import { fmtCurrency, fmtTime, jstToday } from '../lib/format'
+import { fmtCurrency, fmtDateTime, fmtTime, jstToday } from '../lib/format'
 import {
   MessageSquare,
   Home as HomeIcon,
@@ -10,6 +10,7 @@ import {
   Play,
   Clock,
   Edit,
+  Check,
 } from '../icons'
 import StatusCard from './StatusCard'
 import ActivityFeed from './ActivityFeed'
@@ -19,10 +20,13 @@ import './HomeView.css'
 
 interface Props {
   castName: string
+  isStaff: boolean
   onNavigate: (id: RouteId) => void
 }
 
-export default function HomeView({ castName, onNavigate }: Props) {
+// スタッフは接客をしないので、自分の接客・自分の売上のカードは意味を持たない。
+// 代わりに「承認待ちの申込」と、店全体の予約・売上を出す
+export default function HomeView({ castName, isStaff, onNavigate }: Props) {
   return (
     <div className="home-view">
       <header className="home-header">
@@ -31,14 +35,68 @@ export default function HomeView({ castName, onNavigate }: Props) {
       </header>
 
       <div className="home-grid">
-        <ActiveSessionCard castName={castName} onNavigate={onNavigate} />
+        {isStaff
+          ? <PendingRequestsCard onNavigate={onNavigate} />
+          : <ActiveSessionCard castName={castName} onNavigate={onNavigate} />}
         <RoomUsageCard onNavigate={onNavigate} />
-        <TodayReservationsCard castName={castName} onNavigate={onNavigate} />
-        <TodayRevenueCard castName={castName} onNavigate={onNavigate} />
+        <TodayReservationsCard castName={isStaff ? null : castName} onNavigate={onNavigate} />
+        <TodayRevenueCard castName={isStaff ? null : castName} onNavigate={onNavigate} />
       </div>
 
       <ActivityFeed limit={10} />
     </div>
+  )
+}
+
+// ============================================================
+// カード1（スタッフ）: 承認待ちの申込
+// ============================================================
+function PendingRequestsCard({ onNavigate }: { onNavigate: (id: RouteId) => void }) {
+  const [list, setList] = useState<PendingReservation[]>([])
+  const [loading, setLoading] = useState(true)
+
+  const load = useCallback(async () => {
+    try {
+      setList(await getPendingReservations())
+    } catch {
+      /* 承認画面を開けば同じエラーが出るので、カードは黙って空のままにする */
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { load() }, [load])
+  useRealtimeReservations(load)
+
+  return (
+    <StatusCard
+      title="承認待ちの申込"
+      icon={<Check size={16} />}
+      accent="teal"
+      onClick={() => onNavigate('reservation')}
+      actionLabel={loading ? '—' : `${list.length}件`}
+      emphasized={list.length > 0}
+    >
+      {loading && <p className="muted small">読み込み中...</p>}
+      {!loading && list.length === 0 && (
+        <p className="muted small" style={{ minHeight: 24 }}>承認をお待たせしている申込はありません。</p>
+      )}
+      {!loading && list.length > 0 && (
+        <ul className="home-reservations">
+          {list.slice(0, 4).map((p) => (
+            // 申込は先の日付のこともあるので、時刻だけでなく日付も出す
+            <li key={p.id}>
+              <span className="home-reservations-time">{fmtDateTime(p.startsAt)}</span>
+              <span className="home-reservations-customer">{p.customerName || 'お客様'}</span>
+              <span className="muted small">{p.changeFrom ? '変更申請' : p.castName}</span>
+            </li>
+          ))}
+          {list.length > 4 && (
+            <li className="muted small">他 {list.length - 4} 件…</li>
+          )}
+        </ul>
+      )}
+    </StatusCard>
   )
 }
 
@@ -206,11 +264,12 @@ function RoomUsageCard({ onNavigate }: { onNavigate: (id: RouteId) => void }) {
 // ============================================================
 // カード3: 今日の予約
 // ============================================================
+// castName が null なら店全体（スタッフ向け）
 function TodayReservationsCard({
   castName,
   onNavigate,
 }: {
-  castName: string
+  castName: string | null
   onNavigate: (id: RouteId) => void
 }) {
   const [list, setList] = useState<ReservationShape[]>([])
@@ -222,7 +281,7 @@ function TodayReservationsCard({
     if (!r.ok) return
     const today = jstToday()
     const mine = (r.data || []).filter((res) => {
-      if (res.キャスト名 !== castName) return false
+      if (castName !== null && res.キャスト名 !== castName) return false
       const d = new Date(res.予約日時)
       if (isNaN(d.getTime())) return false
       const jst = new Date(d.getTime() + 9 * 60 * 60 * 1000)
@@ -238,7 +297,7 @@ function TodayReservationsCard({
 
   return (
     <StatusCard
-      title="今日の予約（自分）"
+      title={castName === null ? '今日の予約（店全体）' : '今日の予約（自分）'}
       icon={<Calendar size={16} />}
       accent="gold"
       onClick={() => onNavigate('reservation')}
@@ -246,17 +305,23 @@ function TodayReservationsCard({
     >
       {loading && <p className="muted small">読み込み中...</p>}
       {!loading && list.length === 0 && (
-        <p className="muted small">本日の自分の予約はありません。</p>
+        <p className="muted small">
+          {castName === null ? '本日の予約はありません。' : '本日の自分の予約はありません。'}
+        </p>
       )}
       {!loading && list.length > 0 && (
         <ul className="home-reservations">
-          {list.slice(0, 4).map((r) => (
-            <li key={r.reservation_id}>
-              <span className="home-reservations-time">{fmtTime(r.予約日時)}</span>
-              <span className="home-reservations-customer">{r.顧客名 || '（顧客未指定）'}</span>
-              {r.ルーム && <span className="muted small">{r.ルーム}</span>}
-            </li>
-          ))}
+          {list.slice(0, 4).map((r) => {
+            // 自分の分だけならルーム、店全体なら誰の予約かのほうが知りたい
+            const sub = castName === null ? (r.キャスト名 || 'フリー') : r.ルーム
+            return (
+              <li key={r.reservation_id}>
+                <span className="home-reservations-time">{fmtTime(r.予約日時)}</span>
+                <span className="home-reservations-customer">{r.顧客名 || '（顧客未指定）'}</span>
+                {sub && <span className="muted small">{sub}</span>}
+              </li>
+            )
+          })}
           {list.length > 4 && (
             <li className="muted small">他 {list.length - 4} 件…</li>
           )}
@@ -267,13 +332,13 @@ function TodayReservationsCard({
 }
 
 // ============================================================
-// カード4: 今日の売上（自分）
+// カード4: 今日の売上（castName が null なら店全体）
 // ============================================================
 function TodayRevenueCard({
   castName,
   onNavigate,
 }: {
-  castName: string
+  castName: string | null
   onNavigate: (id: RouteId) => void
 }) {
   const [data, setData] = useState<RevenueStatus | null>(null)
@@ -290,29 +355,35 @@ function TodayRevenueCard({
     reload()
   }, [reload, sessions.length])
 
-  const mine = data?.casts.find((c) => c.cast === castName)
+  const mine = castName === null ? null : data?.casts.find((c) => c.cast === castName)
+  const totals = castName === null ? data?.totals : null
+  const shown = mine || totals
 
   return (
     <StatusCard
-      title="今日の売上（自分）"
+      title={castName === null ? '今日の売上（店全体）' : '今日の売上（自分）'}
       icon={<TrendingUp size={16} />}
       accent="green"
       onClick={() => onNavigate('revenue')}
       actionLabel="詳細を見る"
     >
       {loading && <p className="muted small">読み込み中...</p>}
-      {!loading && !mine && (
+      {!loading && !shown && (
         <>
           <div className="status-card-big">¥0</div>
-          <p className="muted small">本日の応対はまだありません。</p>
+          <p className="muted small">
+            {castName === null ? '本日の接客はまだありません。' : '本日の応対はまだありません。'}
+          </p>
         </>
       )}
-      {!loading && mine && (
+      {!loading && shown && (
         <>
-          <div className="status-card-big">{fmtCurrency(mine.revenue)}</div>
+          <div className="status-card-big">{fmtCurrency(shown.revenue)}</div>
           <div className="status-card-row">
-            <span className="status-card-row-label">給与（自分の取り分）</span>
-            <span className="status-card-row-value c-gold">{fmtCurrency(mine.salary)}</span>
+            <span className="status-card-row-label">
+              {castName === null ? '給与（全キャスト分）' : '給与（自分の取り分）'}
+            </span>
+            <span className="status-card-row-value c-gold">{fmtCurrency(shown.salary)}</span>
           </div>
           <div className="muted small">{data?.businessDay}</div>
         </>
