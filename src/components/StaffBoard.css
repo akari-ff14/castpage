@@ -227,3 +227,62 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── そのまま貼れる募集文 ── */
+.board-recruit {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.board-recruit-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.board-recruit-title {
+  font-size: var(--fs-sm);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.board-recruit-meta {
+  font-size: var(--fs-xs);
+  flex: 1;
+  min-width: 0;
+}
+
+.board-recruit-copy {
+  width: auto;
+  padding: 5px 14px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+/* 貼る前に目で確かめられるよう、実際に流す文字のまま折り返して出す */
+.board-recruit-text {
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: var(--fs-sm);
+  line-height: 1.7;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  user-select: all;
+}
+
+.board-recruit-warn {
+  margin: 8px 0 0;
+}
+
+.board-attr {
+  font-size: var(--fs-xs);
+  font-weight: 400;
+  margin-left: 6px;
+}

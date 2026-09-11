@@ -176,7 +176,7 @@ interface SessionRow {
 // cast = 接客するキャスト / staff = 接客せず予約受付などの運営を回すスタッフ
 export type CastRole = 'cast' | 'staff'
 
-let _castsCache: Array<{ id: string; name: string; guarantee_amount: number; role: CastRole }> | null = null
+let _castsCache: Array<{ id: string; name: string; guarantee_amount: number; role: CastRole; attribute: string }> | null = null
 let _roomsCache: Array<{ id: string; name: string; vip: boolean }> | null = null
 let _pricingCache: Map<string, PricingEntry> | null = null
 
@@ -187,7 +187,7 @@ async function loadCasts() {
   // casts_public ビュー経由 (invite_code を除外、RLS バイパスして全 authenticated に露出)
   const { data, error } = await supabase
     .from('casts_public')
-    .select('id, name, guarantee_amount, role')
+    .select('id, name, guarantee_amount, role, attribute')
     .eq('active', true)
     .order('name')
   if (error) throw error
@@ -196,6 +196,7 @@ async function loadCasts() {
     name: c.name,
     guarantee_amount: Number(c.guarantee_amount) || 0,
     role: (c.role === 'staff' ? 'staff' : 'cast') as CastRole,
+    attribute: c.attribute || '',
   }))
   return _castsCache
 }
@@ -318,9 +319,9 @@ export async function getActiveSession(castName: string): Promise<SessionShape |
 // id つきのキャスト名簿。受付日の castIds を名前に直すのに要る。
 // listAllCasts は casts テーブル直読みで管理者権限が前提だが、こちらは
 // casts_public 経由なので紐付け済なら誰でも読める
-export async function listCastRoster(): Promise<Array<{ id: string; name: string; role: CastRole }>> {
+export async function listCastRoster(): Promise<Array<{ id: string; name: string; role: CastRole; attribute: string }>> {
   const casts = await loadCasts()
-  return casts.map((c) => ({ id: c.id, name: c.name, role: c.role }))
+  return casts.map((c) => ({ id: c.id, name: c.name, role: c.role, attribute: c.attribute }))
 }
 
 // 接客担当として選べる人の一覧。スタッフは接客をしないので出さない
@@ -1806,12 +1807,13 @@ export interface CastAdminRow {
   invite_code: string | null  // 未紐付キャストのみ値あり、紐付け済は NULL
   guarantee_amount: number    // 待機保証額（0 = なし）
   role: CastRole              // staff は接客をしない（選択肢・売上集計から外れる）
+  attribute: string           // FF14 の種族・性別の呼び方。募集文の列挙に使う
 }
 
 export async function listAllCasts(): Promise<CastAdminRow[]> {
   const { data, error } = await supabase
     .from('casts')
-    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount, role')
+    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount, role, attribute')
     .order('active', { ascending: false })
     .order('name')
   if (error) throw error
@@ -1827,11 +1829,12 @@ export async function listAllCasts(): Promise<CastAdminRow[]> {
     invite_code: c.invite_code ?? null,
     guarantee_amount: Number(c.guarantee_amount) || 0,
     role: c.role === 'staff' ? 'staff' : 'cast',
+    attribute: c.attribute || '',
   }))
 }
 
 // スタッフは待機保証を持たず、管理権限は DB のトリガで必ず true になる
-export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string; guarantee_amount?: number; role?: CastRole }): Promise<void> {
+export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string; guarantee_amount?: number; role?: CastRole; attribute?: string }): Promise<void> {
   const role: CastRole = payload.role === 'staff' ? 'staff' : 'cast'
   const { error } = await supabase.from('casts').insert({
     name: payload.name,
@@ -1840,12 +1843,13 @@ export async function addCast(payload: { name: string; is_admin?: boolean; activ
     note: payload.note || '',
     guarantee_amount: role === 'staff' ? 0 : Math.max(0, Number(payload.guarantee_amount) || 0),
     role,
+    attribute: (payload.attribute || '').trim(),
   })
   if (error) throw error
   invalidateCaches()
 }
 
-export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null; guarantee_amount: number; role: CastRole }>): Promise<void> {
+export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null; guarantee_amount: number; role: CastRole; attribute: string }>): Promise<void> {
   const { error } = await supabase.from('casts').update(fields).eq('id', id)
   if (error) throw error
   invalidateCaches()
@@ -2204,6 +2208,37 @@ export async function setPublicNotice(text: string): Promise<void> {
     .from('store_settings')
     .upsert(
       { key: PUBLIC_NOTICE_KEY, value: text, updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+  if (error) throw error
+}
+
+// PT募集に貼る文面のひな形。受付ボードで差し込んで組み立てる。
+//   {最短} … 「即ご案内可能」 または 「21:30～」
+//   {属性} … 在店キャストの属性を「・」でつないだもの
+// X のアカウント名のうしろは全角スペース。ソースに直接置くと lint の
+// no-irregular-whitespace に引っかかるため、エスケープで書いている
+export const RECRUIT_TEMPLATE_KEY = 'recruit_template'
+export const RECRUIT_SHORTEST_TOKEN = '{最短}'
+export const RECRUIT_ATTRS_TOKEN = '{属性}'
+export const DEFAULT_RECRUIT_TEMPLATE =
+  '有料対話店 灯 本日21時から営業！詳細はX@akari_rp_ff14\u3000 最短{最短} 完全個室のみ ＰＴへどうぞ！{属性}'
+
+export async function getRecruitTemplate(): Promise<string> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('value')
+    .eq('key', RECRUIT_TEMPLATE_KEY)
+    .maybeSingle()
+  if (error) throw error
+  return typeof data?.value === 'string' && data.value ? data.value : DEFAULT_RECRUIT_TEMPLATE
+}
+
+export async function setRecruitTemplate(text: string): Promise<void> {
+  const { error } = await supabase
+    .from('store_settings')
+    .upsert(
+      { key: RECRUIT_TEMPLATE_KEY, value: text, updated_at: new Date().toISOString() },
       { onConflict: 'key' },
     )
   if (error) throw error

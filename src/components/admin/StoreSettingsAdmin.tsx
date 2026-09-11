@@ -1,11 +1,16 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import {
   getPublicNotice,
+  getRecruitTemplate,
   getReservationTimeStep,
   hasDiscordWebhook,
   setDiscordWebhook,
   setPublicNotice,
+  setRecruitTemplate,
   setReservationTimeStep,
+  DEFAULT_RECRUIT_TEMPLATE,
+  RECRUIT_ATTRS_TOKEN,
+  RECRUIT_SHORTEST_TOKEN,
 } from '../../lib/db'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
@@ -138,8 +143,93 @@ export default function StoreSettingsAdmin() {
         </div>
       </div>
 
+      <RecruitTemplateCard />
+
       <DiscordCard />
 
+      {toast.element}
+    </div>
+  )
+}
+
+// PT募集の文面のひな形。受付ボードで「最短」と「属性」を差し込んで出す
+function RecruitTemplateCard() {
+  const [text, setText] = useState('')
+  const [saved, setSaved] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    getRecruitTemplate()
+      .then((t) => {
+        setText(t)
+        setSaved(t)
+      })
+      .catch(() => {
+        setText(DEFAULT_RECRUIT_TEMPLATE)
+        setSaved(DEFAULT_RECRUIT_TEMPLATE)
+      })
+      .finally(() => setLoaded(true))
+  }, [])
+
+  async function save(next: string) {
+    setBusy(true)
+    try {
+      await setRecruitTemplate(next)
+      setText(next)
+      setSaved(next)
+      toast.show('募集文のひな形を保存しました')
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!loaded) return null
+
+  return (
+    <div className="card">
+      <div className="form-group">
+        <label className="form-label" htmlFor="recruit-template">PT募集の文面</label>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          受付ボードで、そのときの最短案内時刻と在店キャストの属性を差し込んで出します。
+          差し込む場所は次の2つで指定します。
+        </p>
+        <ul className="muted small store-token-list">
+          <li>
+            <code>{RECRUIT_SHORTEST_TOKEN}</code> … 全員空いていれば「即ご案内可能」、
+            埋まっていれば「21:30～」のような時刻になります
+          </li>
+          <li>
+            <code>{RECRUIT_ATTRS_TOKEN}</code> … 在店キャストの属性を「・」でつないだもの
+            （同じ属性は1つにまとめます）
+          </li>
+        </ul>
+        <textarea
+          id="recruit-template"
+          className="form-input"
+          rows={4}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+        />
+        <div className="store-notice-actions">
+          <button className="btn-primary" onClick={() => save(text)} disabled={busy || text === saved}>
+            {busy ? '保存中...' : text === saved ? '保存済み' : '文面を保存'}
+          </button>
+          {text !== saved && (
+            <button className="btn-secondary" onClick={() => setText(saved)} disabled={busy}>
+              元に戻す
+            </button>
+          )}
+          {text === saved && saved !== DEFAULT_RECRUIT_TEMPLATE && (
+            <button className="btn-secondary" onClick={() => setText(DEFAULT_RECRUIT_TEMPLATE)} disabled={busy}>
+              既定の文面に戻す
+            </button>
+          )}
+        </div>
+      </div>
       {toast.element}
     </div>
   )

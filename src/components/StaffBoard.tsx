@@ -12,15 +12,20 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   db,
+  getRecruitTemplate,
   getReservationDays,
   listCastRoster,
+  DEFAULT_RECRUIT_TEMPLATE,
+  RECRUIT_ATTRS_TOKEN,
+  RECRUIT_SHORTEST_TOKEN,
   type ReservationDay,
   type ReservationShape,
   type SessionShape,
 } from '../lib/db'
 import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
 import { fmtBizTime, jstBusinessDate } from '../lib/format'
-import { Clock, Calendar, RefreshCw, AlertTriangle } from '../icons'
+import { Clock, Calendar, RefreshCw, AlertTriangle, Check } from '../icons'
+import { useToast } from './Toast'
 import type { RouteId } from './Sidebar'
 import './StaffBoard.css'
 
@@ -38,6 +43,7 @@ interface BreakSpan {
 interface BoardRow {
   castId: string
   cast: string
+  attribute: string
   availMs: number
   busyNow: boolean
   blockedBy: string
@@ -63,7 +69,8 @@ function bizDateLabel(businessDate: string): string {
 export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) => void }) {
   const [reservations, setReservations] = useState<ReservationShape[]>([])
   const [day, setDay] = useState<ReservationDay | null>(null)
-  const [roster, setRoster] = useState<Array<{ id: string; name: string; role: string }>>([])
+  const [roster, setRoster] = useState<Array<{ id: string; name: string; role: string; attribute: string }>>([])
+  const [template, setTemplate] = useState(DEFAULT_RECRUIT_TEMPLATE)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
   const [tick, setTick] = useState(0)
@@ -79,15 +86,17 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const load = useCallback(async () => {
     setErr('')
     const bd = jstBusinessDate()
-    const [resList, days, castList] = await Promise.all([
+    const [resList, days, castList, tpl] = await Promise.all([
       db.call<ReservationShape[]>('getReservations'),
       getReservationDays(bd, bd).catch(() => [] as ReservationDay[]),
       listCastRoster().catch(() => []),
+      getRecruitTemplate().catch(() => DEFAULT_RECRUIT_TEMPLATE),
     ])
     if (resList.ok) setReservations(resList.data || [])
     else setErr(resList.error)
     setDay(days[0] ?? null)
     setRoster(castList)
+    setTemplate(tpl)
     setLoading(false)
   }, [])
 
@@ -195,6 +204,7 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
         return {
           castId: c.id,
           cast: c.name,
+          attribute: c.attribute,
           availMs,
           busyNow: availMs > now,
           blockedBy,
@@ -208,6 +218,32 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
 
   const freeNow = rows.filter((r) => !r.busyNow).length
   const pendingCount = todayReservations.filter((r) => r.status === 'pending').length
+
+  // PT募集に貼る文面。誰か空いていれば「即ご案内可能」、
+  // 全員埋まっていれば一番早く空く時刻を入れる
+  const recruit = useMemo(() => {
+    if (!rows.length) return null
+    const soonest = rows[0]
+    const shortest = soonest.busyNow ? `${fmtBizTime(soonest.availMs)}～` : '即ご案内可能'
+    // 属性は在店している人ぶんを名前順で。同じ属性はひとつにまとめる
+    const attrs = [
+      ...new Set(
+        [...rows]
+          .sort((a, b) => a.cast.localeCompare(b.cast, 'ja'))
+          .map((r) => r.attribute.trim())
+          .filter(Boolean),
+      ),
+    ]
+    return {
+      shortest,
+      attrs,
+      text: template
+        .split(RECRUIT_SHORTEST_TOKEN)
+        .join(shortest)
+        .split(RECRUIT_ATTRS_TOKEN)
+        .join(attrs.join('・')),
+    }
+  }, [rows, template])
 
   return (
     <div className="board">
@@ -245,6 +281,8 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
         </p>
       )}
 
+      {recruit && <RecruitCard shortest={recruit.shortest} attrs={recruit.attrs} text={recruit.text} />}
+
       {loading && <p className="muted">読み込み中...</p>}
 
       {!loading && rows.length === 0 && (
@@ -266,11 +304,61 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   )
 }
 
+// そのまま PT募集に貼れる文面。中身は時間とともに変わるので、貼る直前に押してもらう
+function RecruitCard({
+  shortest,
+  attrs,
+  text,
+}: {
+  shortest: string
+  attrs: string[]
+  text: string
+}) {
+  const [copied, setCopied] = useState(false)
+  const toast = useToast()
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.show('コピーできませんでした。文面を選んでコピーしてください', 'err')
+    }
+  }
+
+  return (
+    <div className="board-recruit">
+      <div className="board-recruit-head">
+        <span className="board-recruit-title">募集文</span>
+        <span className="board-recruit-meta muted">
+          最短{shortest}
+          {attrs.length > 0 && ` ／ ${attrs.join('・')}`}
+        </span>
+        <button type="button" className="btn-secondary board-recruit-copy" onClick={copy}>
+          {copied ? <Check size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} /> : null}
+          {copied ? 'コピーしました' : 'コピー'}
+        </button>
+      </div>
+      <p className="board-recruit-text">{text}</p>
+      {attrs.length === 0 && (
+        <p className="muted small board-recruit-warn">
+          在店キャストの属性が未設定です。管理 → キャストで「属性」を入れると文末に並びます。
+        </p>
+      )}
+      {toast.element}
+    </div>
+  )
+}
+
 function CastCard({ row }: { row: BoardRow }) {
   return (
     <div className={`board-card ${row.busyNow ? 'busy' : 'free'}`}>
       <div className="board-card-head">
-        <strong className="board-cast">{row.cast}</strong>
+        <strong className="board-cast">
+          {row.cast}
+          {row.attribute && <span className="board-attr muted">{row.attribute}</span>}
+        </strong>
         {row.busyNow ? (
           <span className="board-state board-state-busy">
             <Clock size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />

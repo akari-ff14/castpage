@@ -17,13 +17,14 @@ interface FormState {
   id?: string
   name: string
   role: CastRole            // cast = 接客する / staff = 接客せず運営を回す
+  attribute: string         // FF14 の種族・性別の呼び方。募集文に並べる
   is_admin: boolean
   active: boolean
   note: string
   guarantee_amount: number  // 待機保証額（0 = なし）
 }
 
-const emptyForm = (): FormState => ({ name: '', role: 'cast', is_admin: false, active: true, note: '', guarantee_amount: 0 })
+const emptyForm = (): FormState => ({ name: '', role: 'cast', attribute: '', is_admin: false, active: true, note: '', guarantee_amount: 0 })
 
 export default function CastAdmin() {
   const [list, setList] = useState<CastAdminRow[]>([])
@@ -60,6 +61,7 @@ export default function CastAdmin() {
       id: c.id,
       name: c.name,
       role: c.role,
+      attribute: c.attribute,
       is_admin: c.is_admin,
       active: c.active,
       note: c.note,
@@ -80,6 +82,8 @@ export default function CastAdmin() {
       const common = {
         name: form.name.trim(),
         role: form.role,
+        // 属性は募集文の列挙に使うだけなので、接客しないスタッフには持たせない
+        attribute: staff ? '' : form.attribute.trim(),
         is_admin: staff ? true : form.is_admin,
         active: form.active,
         note: form.note,
@@ -179,11 +183,18 @@ export default function CastAdmin() {
                 接客はせず、予約受付などの運営を担当（管理権限あり）
               </div>
             ) : (
-              <div className="admin-card-meta">
-                待機保証: {c.guarantee_amount > 0
-                  ? <span className="c-gold">{fmtCurrency(c.guarantee_amount)}</span>
-                  : <span className="muted">なし</span>}
-              </div>
+              <>
+                <div className="admin-card-meta">
+                  属性: {c.attribute
+                    ? c.attribute
+                    : <span className="muted">未設定（募集文に出ません）</span>}
+                </div>
+                <div className="admin-card-meta">
+                  待機保証: {c.guarantee_amount > 0
+                    ? <span className="c-gold">{fmtCurrency(c.guarantee_amount)}</span>
+                    : <span className="muted">なし</span>}
+                </div>
+              </>
             )}
             {c.note && <div className="admin-card-meta">{c.note}</div>}
           </div>
@@ -243,6 +254,22 @@ export default function CastAdmin() {
               onChange={(e) => setForm((f) => ({ ...f, note: e.target.value }))}
             />
           </div>
+          {form.role === 'cast' && (
+            <div className="form-group">
+              <label className="form-label">属性</label>
+              <input
+                type="text"
+                className="form-input"
+                value={form.attribute}
+                onChange={(e) => setForm((f) => ({ ...f, attribute: e.target.value }))}
+                placeholder="例: メスッテ / ミドオス / メスラ"
+              />
+              <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
+                受付ボードの募集文に「メスッテ・ミドオス」のように並びます。
+                空欄にすると募集文に出ません。
+              </p>
+            </div>
+          )}
           {form.role === 'cast' && (
             <div className="form-group">
               <label className="form-label">待機保証（円 / 営業日）</label>

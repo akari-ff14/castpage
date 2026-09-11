@@ -294,3 +294,17 @@
   color: var(--text-dim);
   white-space: nowrap;
 }
+
+/* 募集文のひな形で使える差し込みの説明 */
+.store-token-list {
+  margin: 0 0 var(--space-3);
+  padding-left: var(--space-5);
+  line-height: 1.7;
+}
+
+.store-token-list code {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 1px 5px;
+}
