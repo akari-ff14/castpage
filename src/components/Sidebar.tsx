@@ -12,11 +12,13 @@ import {
   Close,
   LogOut,
   Crown,
+  Clock,
 } from '../icons'
 import './Sidebar.css'
 
 export type RouteId =
   | 'home'
+  | 'board'
   | 'session'
   | 'reservation'
   | 'history'
@@ -33,10 +35,14 @@ interface NavItem {
   icon: typeof Home
   adminOnly?: boolean
   castOnly?: boolean  // スタッフ（接客をしない運営）には出さない
+  badge?: string
 }
 
 const MAIN_NAV: NavItem[] = [
   { id: 'home', label: 'ホーム', icon: Home },
+  // スタッフの受付ボード。スタッフはここに着地する。
+  // 管理者からも開ける（店を回す側が同じ画面を見られるように）
+  { id: 'board', label: '受付ボード', icon: Clock, adminOnly: true },
   { id: 'session', label: '接客', icon: MessageSquare, castOnly: true },
   { id: 'reservation', label: '予約', icon: Calendar },
   { id: 'history', label: '履歴', icon: ListChecks },
@@ -44,7 +50,7 @@ const MAIN_NAV: NavItem[] = [
   { id: 'blacklist', label: 'ブラックリスト', icon: UserX },
   { id: 'revenue', label: '売上', icon: TrendingUp },
   { id: 'chest', label: 'カンチェ', icon: Crown },
-  { id: 'admin', label: '管理', icon: Wrench, adminOnly: true },
+  { id: 'admin', label: '管理', icon: Wrench, adminOnly: true, badge: '管理' },
 ]
 
 const FOOTER_NAV: NavItem[] = [
@@ -133,7 +139,7 @@ export default function Sidebar({
               >
                 <Icon size={18} />
                 <span>{item.label}</span>
-                {item.adminOnly && <span className="sidebar-badge">管理</span>}
+                {item.badge && <span className="sidebar-badge">{item.badge}</span>}
               </button>
             )
           })}

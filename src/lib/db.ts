@@ -315,6 +315,14 @@ export async function getActiveSession(castName: string): Promise<SessionShape |
   return data ? sessionRowToShape(data as unknown as SessionRow, pricing, castNames) : null
 }
 
+// id つきのキャスト名簿。受付日の castIds を名前に直すのに要る。
+// listAllCasts は casts テーブル直読みで管理者権限が前提だが、こちらは
+// casts_public 経由なので紐付け済なら誰でも読める
+export async function listCastRoster(): Promise<Array<{ id: string; name: string; role: CastRole }>> {
+  const casts = await loadCasts()
+  return casts.map((c) => ({ id: c.id, name: c.name, role: c.role }))
+}
+
 // 接客担当として選べる人の一覧。スタッフは接客をしないので出さない
 // （予約のキャスト欄・接客開始・履歴の対応者・設定タブのマスタ参照が全部ここを見ている）
 export async function getCastsAndRooms() {

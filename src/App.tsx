@@ -7,6 +7,7 @@ import MagicLinkScreen from './components/MagicLinkScreen'
 import CastSelectionScreen from './components/CastSelectionScreen'
 import Sidebar, { type RouteId } from './components/Sidebar'
 import HomeView from './components/HomeView'
+import StaffBoard from './components/StaffBoard'
 import WelcomeModal from './components/WelcomeModal'
 import SessionTab, { type SessionPreset } from './components/SessionTab'
 import ReservationTab from './components/ReservationTab'
@@ -129,7 +130,8 @@ function Dashboard({
   isStaff: boolean
   onLogout: () => void
 }) {
-  const [route, setRoute] = useState<RouteId>('home')
+  // スタッフは受付ボードに着地する。最初に見たいのが「今誰が受けられるか」なので
+  const [route, setRoute] = useState<RouteId>(isStaff ? 'board' : 'home')
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [showWelcome, setShowWelcome] = useState(
     () => localStorage.getItem(WELCOMED_KEY) !== '1',
@@ -174,6 +176,7 @@ function Dashboard({
 
         <div className="app-content">
           {route === 'home' && <HomeView castName={castName} isStaff={isStaff} onNavigate={setRoute} />}
+          {route === 'board' && isAdmin && <StaffBoard onNavigate={setRoute} />}
           {route === 'session' && !isStaff && (
             <SessionTab
               castName={castName}
@@ -208,6 +211,7 @@ function Dashboard({
 function routeTitle(r: RouteId): string {
   switch (r) {
     case 'home':        return 'ホーム'
+    case 'board':       return '受付ボード'
     case 'session':     return '接客'
     case 'reservation': return '予約'
     case 'history':     return '履歴'

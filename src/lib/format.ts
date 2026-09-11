@@ -61,3 +61,13 @@ export const jstToday = (): string => {
   const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
   return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(jst.getUTCDate()).padStart(2, '0')}`
 }
+
+// 営業日を YYYY-MM-DD で。JST 4:00 区切りなので、深夜1時なら前日の営業日になる。
+// 受付日（reservation_days.business_date）や売上の集計と同じ区切り方。
+export const jstBusinessDate = (at?: string | number | Date | null): string => {
+  const base = at === undefined || at === null ? new Date() : _toDate(at)
+  if (!base) return jstToday()
+  const jst = new Date(base.getTime() + 9 * 60 * 60 * 1000)
+  if (jst.getUTCHours() < 4) jst.setUTCDate(jst.getUTCDate() - 1)
+  return `${jst.getUTCFullYear()}-${String(jst.getUTCMonth() + 1).padStart(2, '0')}-${String(jst.getUTCDate()).padStart(2, '0')}`
+}
