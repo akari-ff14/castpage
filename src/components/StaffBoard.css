@@ -178,17 +178,22 @@
   min-width: 44px;
 }
 
+/* 名前にも幅の下限を置く。0 まで縮むと、バッジが多い行で
+   お客様のお名前が1文字ずつ折り返してしまう */
 .board-res-name {
   color: var(--text);
-  flex: 1;
-  min-width: 0;
+  flex: 1 1 auto;
+  min-width: 6em;
   overflow-wrap: anywhere;
 }
 
+/* 入りきらないときは、名前を削らずバッジごと次の行へ落とす */
 .board-res-badges {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
+  flex-shrink: 0;
+  margin-left: auto;
 }
 
 .board-badge {
