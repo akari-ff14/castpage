@@ -308,3 +308,11 @@
   border-radius: var(--radius-sm);
   padding: 1px 5px;
 }
+
+/* 案内マクロの編集欄。行の切れ目が読めるよう折り返さない */
+.store-macro-area {
+  white-space: pre;
+  overflow-x: auto;
+  resize: vertical;
+  line-height: 1.7;
+}

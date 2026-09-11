@@ -13,23 +13,27 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   db,
   getDailyNote,
+  getGuideMacro,
   getRecruitTemplate,
   getReservationDays,
   listCastRoster,
+  renderGuideMacro,
   saveDailyNote,
   saveReservationDay,
+  DEFAULT_GUIDE_MACRO,
   DEFAULT_RECRUIT_TEMPLATE,
   DEFAULT_SLOT_TIMES,
   RECRUIT_ATTRS_TOKEN,
   RECRUIT_SHORTEST_TOKEN,
   type CustomerSummary,
+  type MacroTarget,
   type DailyNote,
   type ReservationDay,
   type ReservationShape,
   type SessionShape,
 } from '../lib/db'
 import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
-import { fmtBizTime, fmtDate, jstBusinessDate } from '../lib/format'
+import { fmtBizTime, fmtDate, fmtGil, jstBusinessDate } from '../lib/format'
 import { Clock, Calendar, RefreshCw, AlertTriangle, Check, Play, Search, Home as HomeIcon, Crown, Edit } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -89,6 +93,8 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const [roster, setRoster] = useState<Array<{ id: string; name: string; role: string; attribute: string }>>([])
   const [template, setTemplate] = useState(DEFAULT_RECRUIT_TEMPLATE)
   const [rooms, setRooms] = useState<RoomInfo[]>([])
+  const [macro, setMacro] = useState(DEFAULT_GUIDE_MACRO)
+  const [prices, setPrices] = useState({ normal: 0, vip: 0, option: 0 })
   const [note, setNote] = useState<DailyNote>({ body: '', updatedByName: '', updatedAt: null })
   const [startFor, setStartFor] = useState<BoardRow | null>(null)
   const [loading, setLoading] = useState(true)
@@ -108,13 +114,15 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const load = useCallback(async () => {
     setErr('')
     const bd = jstBusinessDate()
-    const [resList, days, castList, tpl, roomRes, dayNote] = await Promise.all([
+    const [resList, days, castList, tpl, roomRes, dayNote, macroTpl, priceRes] = await Promise.all([
       db.call<ReservationShape[]>('getReservations'),
       getReservationDays(bd, bd).catch(() => [] as ReservationDay[]),
       listCastRoster().catch(() => []),
       getRecruitTemplate().catch(() => DEFAULT_RECRUIT_TEMPLATE),
       db.call<{ roomsData: Array<{ name: string; vip: number }> }>('getCastsAndRooms'),
       getDailyNote(bd).catch(() => ({ body: '', updatedByName: '', updatedAt: null })),
+      getGuideMacro().catch(() => DEFAULT_GUIDE_MACRO),
+      db.call<Array<{ key: string; price: number }>>('getPricing'),
     ])
     if (resList.ok) setReservations(resList.data || [])
     else setErr(resList.error)
@@ -125,6 +133,15 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
       setRooms((roomRes.data.roomsData || []).map((r) => ({ name: r.name, vip: r.vip === 1 })))
     }
     setNote(dayNote)
+    setMacro(macroTpl)
+    if (priceRes.ok) {
+      const byKey = new Map((priceRes.data || []).map((p) => [p.key, Number(p.price) || 0]))
+      setPrices({
+        normal: byKey.get('normal') ?? 0,
+        vip: byKey.get('vip') ?? 0,
+        option: byKey.get('option') ?? 0,
+      })
+    }
     setLoading(false)
   }, [])
 
@@ -381,6 +398,8 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
 
       {recruit && <RecruitCard shortest={recruit.shortest} attrs={recruit.attrs} text={recruit.text} />}
 
+      <MacroCard template={macro} prices={prices} />
+
       <div className="board-pair">
         <RoomStrip rooms={roomRows} freeCount={freeRooms} />
         <CustomerCheck />
@@ -440,6 +459,76 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
         />
       )}
 
+      {toast.element}
+    </div>
+  )
+}
+
+// お客様への説明マクロ。FF14 のマクロ欄にそのまま貼れる形で写す。
+// パーティ向けと tell 向けは宛先だけの違いなので、同じひな形から両方作る
+const MACRO_TARGETS: Array<{ id: MacroTarget; label: string }> = [
+  { id: '/p', label: 'パーティ' },
+  { id: '/tell <t>', label: 'tell' },
+]
+
+function MacroCard({
+  template,
+  prices,
+}: {
+  template: string
+  prices: { normal: number; vip: number; option: number }
+}) {
+  const [target, setTarget] = useState<MacroTarget>('/p')
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const toast = useToast()
+
+  const text = useMemo(
+    () => renderGuideMacro(template, target, prices),
+    [template, target, prices],
+  )
+  const lines = text.split('\n').length
+
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 2000)
+    } catch {
+      toast.show('コピーできませんでした。文面を選んでコピーしてください', 'err')
+    }
+  }
+
+  return (
+    <div className="board-recruit">
+      <div className="board-recruit-head">
+        <span className="board-recruit-title">案内マクロ</span>
+        <span className="board-macro-seg">
+          {MACRO_TARGETS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              className={`board-macro-tab ${target === t.id ? 'active' : ''}`}
+              onClick={() => setTarget(t.id)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </span>
+        <span className="board-recruit-meta muted">
+          通常 {fmtGil(prices.normal)} ／ VIP {fmtGil(prices.vip)} ／ オプション {fmtGil(prices.option)}
+          {/* FF14 のマクロは15行まで。料金の書き足しで溢れないよう行数も出す */}
+          {` ／ ${lines}行`}
+        </span>
+        <button type="button" className="btn-secondary board-recruit-copy" onClick={copy}>
+          {copied ? <Check size={14} style={{ verticalAlign: '-2px', marginRight: 4 }} /> : null}
+          {copied ? 'コピーしました' : 'コピー'}
+        </button>
+      </div>
+      <button type="button" className="board-macro-toggle" onClick={() => setOpen((v) => !v)}>
+        {open ? '文面を隠す' : '文面を見る'}
+      </button>
+      {open && <pre className="board-macro-text">{text}</pre>}
       {toast.element}
     </div>
   )

@@ -475,3 +475,56 @@
   border-color: var(--gold);
   color: var(--gold);
 }
+
+/* ── 案内マクロ ── */
+.board-macro-seg {
+  display: inline-flex;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.board-macro-tab {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  padding: 4px 12px;
+  cursor: pointer;
+}
+
+.board-macro-tab.active {
+  background: var(--bg);
+  color: var(--gold);
+}
+
+.board-macro-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  padding: 0 2px;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.board-macro-toggle:hover {
+  color: var(--text);
+}
+
+/* マクロは行ごとに意味があるので、折り返さず横スクロールで見せる */
+.board-macro-text {
+  margin: 8px 0 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: var(--fs-xs);
+  line-height: 1.8;
+  overflow-x: auto;
+  white-space: pre;
+  user-select: all;
+  font-family: inherit;
+}

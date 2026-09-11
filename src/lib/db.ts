@@ -6,7 +6,7 @@
 // 認証は Supabase 側で自動的にハンドリングされる（auth.uid() が RLS で使われる）
 
 import { supabase } from './supabase'
-import { fmtBizTime, fmtDate } from './format'
+import { fmtBizTime, fmtDate, fmtGil } from './format'
 
 // ============================================================
 // 型定義（旧 AkariApi の戻り値と互換）
@@ -2239,6 +2239,69 @@ export async function setRecruitTemplate(text: string): Promise<void> {
     .from('store_settings')
     .upsert(
       { key: RECRUIT_TEMPLATE_KEY, value: text, updated_at: new Date().toISOString() },
+      { onConflict: 'key' },
+    )
+  if (error) throw error
+}
+
+// お客様に店のしくみを説明する FF14 のマクロ。
+// パーティチャット用とターゲットへの tell 用で本文は同じなので、
+// 宛先だけを差し込みにして1つのひな形から両方を作る。
+//   {宛先}         … '/p' または '/tell <t>'
+//   {通常料金} {VIP料金} {オプション料金} … 料金マスタの現在値（20万G の形）
+export const GUIDE_MACRO_KEY = 'guide_macro'
+export const MACRO_TARGET_TOKEN = '{宛先}'
+export const MACRO_NORMAL_TOKEN = '{通常料金}'
+export const MACRO_VIP_TOKEN = '{VIP料金}'
+export const MACRO_OPTION_TOKEN = '{オプション料金}'
+
+// 中の全角スペースはお店のマクロ文面そのもの（体裁の一部）なので、見たままで持つ。
+// no-irregular-whitespace は既定で文字列の中までは見ないので、そのまま書いてよい
+export const DEFAULT_GUIDE_MACRO = [
+  '{宛先} 当店のシステムについてご案内いたします。 <wait.3>',
+  '{宛先} ---- 《 お席のご案内 》 ---- <wait.3>',
+  '{宛先} 当店は全席完全個室、分単位のご利用となっております。 <wait.3>',
+  '{宛先} お部屋は以下の２種類をご用意しております。 <wait.3>',
+  '{宛先} ①通常個室：{通常料金}　／　②VIP個室：{VIP料金} <wait.3>',
+  '{宛先} 限られた席数での運営のため、ご希望に添えない場合はご容赦ください。 <wait.3>',
+  '{宛先} ---- 《 オプションについて 》 ---- <wait.3>',
+  '{宛先} キャストにより対応可能な内容が異なりますので、 <wait.3>',
+  '{宛先} 詳細は直接キャストまでお気軽にお申し付けください。 <wait.3>',
+  '{宛先}  オプション料金：一律 {オプション料金} <wait.3>',
+  '{宛先} 　　　+:. 　》　》　《　《　:+　<wait.3>',
+  '{宛先} 以上となります。ここまででご不明な点はございますでしょうか？ <wait.2>',
+].join('\n')
+
+export async function getGuideMacro(): Promise<string> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('value')
+    .eq('key', GUIDE_MACRO_KEY)
+    .maybeSingle()
+  if (error) throw error
+  return typeof data?.value === 'string' && data.value ? data.value : DEFAULT_GUIDE_MACRO
+}
+
+export type MacroTarget = '/p' | '/tell <t>'
+
+// ひな形に宛先と今の料金を差し込んで、そのまま FF14 に貼れる形にする
+export function renderGuideMacro(
+  template: string,
+  target: MacroTarget,
+  prices: { normal: number; vip: number; option: number },
+): string {
+  return template
+    .split(MACRO_TARGET_TOKEN).join(target)
+    .split(MACRO_NORMAL_TOKEN).join(fmtGil(prices.normal))
+    .split(MACRO_VIP_TOKEN).join(fmtGil(prices.vip))
+    .split(MACRO_OPTION_TOKEN).join(fmtGil(prices.option))
+}
+
+export async function setGuideMacro(text: string): Promise<void> {
+  const { error } = await supabase
+    .from('store_settings')
+    .upsert(
+      { key: GUIDE_MACRO_KEY, value: text, updated_at: new Date().toISOString() },
       { onConflict: 'key' },
     )
   if (error) throw error

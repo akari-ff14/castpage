@@ -1,14 +1,21 @@
 import { useEffect, useState, type CSSProperties } from 'react'
 import {
+  getGuideMacro,
   getPublicNotice,
   getRecruitTemplate,
   getReservationTimeStep,
   hasDiscordWebhook,
   setDiscordWebhook,
+  setGuideMacro,
   setPublicNotice,
   setRecruitTemplate,
   setReservationTimeStep,
+  DEFAULT_GUIDE_MACRO,
   DEFAULT_RECRUIT_TEMPLATE,
+  MACRO_NORMAL_TOKEN,
+  MACRO_OPTION_TOKEN,
+  MACRO_TARGET_TOKEN,
+  MACRO_VIP_TOKEN,
   RECRUIT_ATTRS_TOKEN,
   RECRUIT_SHORTEST_TOKEN,
 } from '../../lib/db'
@@ -145,6 +152,8 @@ export default function StoreSettingsAdmin() {
 
       <RecruitTemplateCard />
 
+      <GuideMacroCard />
+
       <DiscordCard />
 
       {toast.element}
@@ -225,6 +234,94 @@ function RecruitTemplateCard() {
           )}
           {text === saved && saved !== DEFAULT_RECRUIT_TEMPLATE && (
             <button className="btn-secondary" onClick={() => setText(DEFAULT_RECRUIT_TEMPLATE)} disabled={busy}>
+              既定の文面に戻す
+            </button>
+          )}
+        </div>
+      </div>
+      {toast.element}
+    </div>
+  )
+}
+
+// お客様へシステムを説明する FF14 マクロのひな形。
+// 受付ボードで宛先と料金を差し込んで出す
+function GuideMacroCard() {
+  const [text, setText] = useState('')
+  const [saved, setSaved] = useState('')
+  const [loaded, setLoaded] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    getGuideMacro()
+      .then((t) => {
+        setText(t)
+        setSaved(t)
+      })
+      .catch(() => {
+        setText(DEFAULT_GUIDE_MACRO)
+        setSaved(DEFAULT_GUIDE_MACRO)
+      })
+      .finally(() => setLoaded(true))
+  }, [])
+
+  async function save(next: string) {
+    setBusy(true)
+    try {
+      await setGuideMacro(next)
+      setText(next)
+      setSaved(next)
+      toast.show('案内マクロを保存しました')
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  if (!loaded) return null
+
+  const lines = text.split('\n').length
+
+  return (
+    <div className="card">
+      <div className="form-group">
+        <label className="form-label" htmlFor="guide-macro">お客様への案内マクロ</label>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          受付ボードから、パーティチャット用と tell 用の2通りで写せます。
+          本文は共通で、宛先と料金だけを差し込みます。
+        </p>
+        <ul className="muted small store-token-list">
+          <li><code>{MACRO_TARGET_TOKEN}</code> … <code>/p</code> または <code>{'/tell <t>'}</code></li>
+          <li>
+            <code>{MACRO_NORMAL_TOKEN}</code> <code>{MACRO_VIP_TOKEN}</code>{' '}
+            <code>{MACRO_OPTION_TOKEN}</code> … 料金マスタの現在値（「20万G」の形）。
+            料金を変えればマクロも自動で変わります
+          </li>
+        </ul>
+        <textarea
+          id="guide-macro"
+          className="form-input store-macro-area"
+          rows={13}
+          value={text}
+          onChange={(e) => setText(e.target.value)}
+          spellCheck={false}
+        />
+        <p className="muted small" style={{ margin: '6px 2px 0' }}>
+          現在 {lines}行{lines > 15 && '（FF14 のマクロは15行までです）'}
+        </p>
+        <div className="store-notice-actions">
+          <button className="btn-primary" onClick={() => save(text)} disabled={busy || text === saved}>
+            {busy ? '保存中...' : text === saved ? '保存済み' : 'マクロを保存'}
+          </button>
+          {text !== saved && (
+            <button className="btn-secondary" onClick={() => setText(saved)} disabled={busy}>
+              元に戻す
+            </button>
+          )}
+          {text === saved && saved !== DEFAULT_GUIDE_MACRO && (
+            <button className="btn-secondary" onClick={() => setText(DEFAULT_GUIDE_MACRO)} disabled={busy}>
               既定の文面に戻す
             </button>
           )}

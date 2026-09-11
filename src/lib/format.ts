@@ -56,6 +56,14 @@ export const fmtBizTime = (v: string | number | Date | null | undefined): string
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
 }
 
+// 店の言い方に合わせたギル表記。20万Gのようにきりが良ければ「万」でまとめ、
+// そうでなければ桁区切りのまま出す（案内マクロの料金差し込みに使う）
+export const fmtGil = (v: number | string | null | undefined): string => {
+  const n = Math.round(Number(v) || 0)
+  if (n >= 10000 && n % 10000 === 0) return `${(n / 10000).toLocaleString('ja-JP')}万G`
+  return `${n.toLocaleString('ja-JP')}G`
+}
+
 // JSTの "今日" を YYYY-MM-DD で
 export const jstToday = (): string => {
   const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
