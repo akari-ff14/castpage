@@ -716,9 +716,9 @@ function StartForCastModal({
         <div className="select-wrap">
           <select className="form-select" value={room} onChange={(e) => setRoom(e.target.value)}>
             <option value="">選んでください</option>
+            {/* VIP かどうかは下の「今の選択」に出るので、選択肢には付け足さない
+                （ルーム名にすでに VIP と入っている店だと二重になる） */}
             {rooms.map((r) => (
-              {/* VIP かどうかは下の「今の選択」に出るので、ここでは付け足さない
-                  （ルーム名にすでに VIP と入っている店だと二重になる） */}
               <option key={r.name} value={r.name} disabled={!!r.using}>
                 {r.name}{r.using ? ` — ${r.using.対応者} 使用中` : ''}
               </option>
