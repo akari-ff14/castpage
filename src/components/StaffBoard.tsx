@@ -12,22 +12,39 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   db,
+  getDailyNote,
   getRecruitTemplate,
   getReservationDays,
   listCastRoster,
+  saveDailyNote,
+  saveReservationDay,
   DEFAULT_RECRUIT_TEMPLATE,
+  DEFAULT_SLOT_TIMES,
   RECRUIT_ATTRS_TOKEN,
   RECRUIT_SHORTEST_TOKEN,
+  type CustomerSummary,
+  type DailyNote,
   type ReservationDay,
   type ReservationShape,
   type SessionShape,
 } from '../lib/db'
 import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
-import { fmtBizTime, jstBusinessDate } from '../lib/format'
-import { Clock, Calendar, RefreshCw, AlertTriangle, Check } from '../icons'
+import { fmtBizTime, fmtDate, jstBusinessDate } from '../lib/format'
+import { Clock, Calendar, RefreshCw, AlertTriangle, Check, Play, Search, Home as HomeIcon, Crown, Edit } from '../icons'
+import Modal from './Modal'
 import { useToast } from './Toast'
 import type { RouteId } from './Sidebar'
 import './StaffBoard.css'
+
+interface RoomInfo {
+  name: string
+  vip: boolean
+}
+
+interface BlMatch {
+  name: string
+  reason?: string
+}
 
 // 接客と接客のあいだに置く片付けの時間
 const INTERVAL_MIN = 10
@@ -71,10 +88,15 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const [day, setDay] = useState<ReservationDay | null>(null)
   const [roster, setRoster] = useState<Array<{ id: string; name: string; role: string; attribute: string }>>([])
   const [template, setTemplate] = useState(DEFAULT_RECRUIT_TEMPLATE)
+  const [rooms, setRooms] = useState<RoomInfo[]>([])
+  const [note, setNote] = useState<DailyNote>({ body: '', updatedByName: '', updatedAt: null })
+  const [startFor, setStartFor] = useState<BoardRow | null>(null)
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState('')
+  const [busy, setBusy] = useState(false)
   const [tick, setTick] = useState(0)
   const { sessions: activeSessions } = useActiveSessions()
+  const toast = useToast()
 
   // 営業日は 4:00 区切り。深夜1時に開いても「昨日の営業日」を見せる。
   // tick は 4:00 をまたいだときに日付を繰り上げるためだけに見ている
@@ -86,17 +108,23 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const load = useCallback(async () => {
     setErr('')
     const bd = jstBusinessDate()
-    const [resList, days, castList, tpl] = await Promise.all([
+    const [resList, days, castList, tpl, roomRes, dayNote] = await Promise.all([
       db.call<ReservationShape[]>('getReservations'),
       getReservationDays(bd, bd).catch(() => [] as ReservationDay[]),
       listCastRoster().catch(() => []),
       getRecruitTemplate().catch(() => DEFAULT_RECRUIT_TEMPLATE),
+      db.call<{ roomsData: Array<{ name: string; vip: number }> }>('getCastsAndRooms'),
+      getDailyNote(bd).catch(() => ({ body: '', updatedByName: '', updatedAt: null })),
     ])
     if (resList.ok) setReservations(resList.data || [])
     else setErr(resList.error)
     setDay(days[0] ?? null)
     setRoster(castList)
     setTemplate(tpl)
+    if (roomRes.ok) {
+      setRooms((roomRes.data.roomsData || []).map((r) => ({ name: r.name, vip: r.vip === 1 })))
+    }
+    setNote(dayNote)
     setLoading(false)
   }, [])
 
@@ -245,6 +273,71 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
     }
   }, [rows, template])
 
+  // ルームの空き。お客様をどこへ通すかは受付がその場で決めるので、
+  // 使用中なら誰がいつまで使っているかまで出す
+  const roomRows = useMemo(() => {
+    void tick
+    return rooms.map((r) => {
+      const using = activeSessions.find((s) => s.ルーム === r.name) ?? null
+      return { ...r, using }
+    })
+  }, [rooms, activeSessions, tick])
+
+  const freeRooms = roomRows.filter((r) => !r.using).length
+
+  // 受付日を作る＝その日の出勤表を作る。Web受付は開かない（is_open は false）
+  async function createToday() {
+    setBusy(true)
+    try {
+      await saveReservationDay({
+        businessDate,
+        isOpen: false,
+        acceptFrom: null,
+        acceptUntil: null,
+        slotTimes: [...DEFAULT_SLOT_TIMES],
+        note: '',
+        castIds: roster.filter((c) => c.role === 'cast').map((c) => c.id),
+        blocks: [],
+      })
+      toast.show('今日の出勤表を作りました。お休みの人は各カードから外せます')
+      await load()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  // 出勤 ⇔ お休み。受付日の出勤キャストを入れ替える
+  async function toggleDuty(castId: string, working: boolean) {
+    if (!day) return
+    const next = working
+      ? [...new Set([...day.castIds, castId])]
+      : day.castIds.filter((id) => id !== castId)
+    setBusy(true)
+    try {
+      await saveReservationDay({ ...day, castIds: next })
+      await load()
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function saveNote(body: string) {
+    setBusy(true)
+    try {
+      await saveDailyNote(businessDate, body)
+      setNote(await getDailyNote(businessDate))
+      toast.show('申し送りを保存しました')
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div className="board">
       <div className="board-head">
@@ -275,13 +368,23 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
       )}
 
       {!day && !loading && (
-        <p className="board-note muted">
-          今日の受付日がまだ登録されていないので、全キャストを出しています。
-          お休みの人を反映するには 管理 → 受付日 でこの日を作ってください。
-        </p>
+        <div className="board-note">
+          <p className="muted" style={{ margin: 0 }}>
+            今日の出勤表がまだ無いので、全キャストを出しています。
+            作るとお休みの人を外せるようになります（Web受付は開きません）。
+          </p>
+          <button type="button" className="btn-secondary board-note-btn" onClick={createToday} disabled={busy}>
+            {busy ? '作成中...' : '今日の出勤表を作る'}
+          </button>
+        </div>
       )}
 
       {recruit && <RecruitCard shortest={recruit.shortest} attrs={recruit.attrs} text={recruit.text} />}
+
+      <div className="board-pair">
+        <RoomStrip rooms={roomRows} freeCount={freeRooms} />
+        <CustomerCheck />
+      </div>
 
       {loading && <p className="muted">読み込み中...</p>}
 
@@ -291,16 +394,402 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
 
       <div className="board-grid">
         {rows.map((r) => (
-          <CastCard key={r.castId} row={r} />
+          <CastCard
+            key={r.castId}
+            row={r}
+            canRest={!!day}
+            busy={busy}
+            onStart={() => setStartFor(r)}
+            onRest={() => toggleDuty(r.castId, false)}
+          />
         ))}
       </div>
 
       {castsOff.length > 0 && (
-        <p className="board-off muted">
-          本日お休み: {castsOff.map((c) => c.name).join('、')}
-        </p>
+        <div className="board-off muted">
+          本日お休み:{' '}
+          {castsOff.map((c) => (
+            <span key={c.id} className="board-off-item">
+              {c.name}
+              {day && (
+                <button
+                  type="button"
+                  className="board-off-back"
+                  onClick={() => toggleDuty(c.id, true)}
+                  disabled={busy}
+                >
+                  出勤に戻す
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+
+      <HandoverNote note={note} busy={busy} onSave={saveNote} />
+
+      {startFor && (
+        <StartForCastModal
+          row={startFor}
+          rooms={roomRows}
+          onClose={() => setStartFor(null)}
+          onStarted={() => {
+            setStartFor(null)
+            load()
+          }}
+        />
+      )}
+
+      {toast.element}
+    </div>
+  )
+}
+
+// ルームの空き。受付は「誰が空いてるか」の次に「どの部屋か」を聞かれる
+function RoomStrip({
+  rooms,
+  freeCount,
+}: {
+  rooms: Array<RoomInfo & { using: SessionShape | null }>
+  freeCount: number
+}) {
+  return (
+    <div className="board-panel">
+      <div className="board-panel-head">
+        <HomeIcon size={14} />
+        <span className="board-panel-title">ルーム</span>
+        <span className="muted board-panel-meta">空き {freeCount} / {rooms.length}</span>
+      </div>
+      {rooms.length === 0 ? (
+        <p className="muted small" style={{ margin: 0 }}>ルームが登録されていません。</p>
+      ) : (
+        <div className="board-rooms">
+          {rooms.map((r) => (
+            <div key={r.name} className={`board-room ${r.using ? 'used' : 'free'}`}>
+              <span className="board-room-name">
+                {r.vip && <Crown size={11} style={{ verticalAlign: '-1px', marginRight: 3 }} />}
+                {r.name}
+              </span>
+              {r.using ? (
+                <span className="board-room-state">
+                  {r.using.対応者} 〜{fmtBizTime(r.using.対応終了時間)}
+                </span>
+              ) : (
+                <span className="board-room-state free">空き</span>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
+  )
+}
+
+// 飛び込みのお客様を通す前の確認。出禁かどうかと、常連かどうかを1か所で見る。
+// 予約を入れるときにしか走っていなかったチェックを、受付の手元に置く
+function CustomerCheck() {
+  const [name, setName] = useState('')
+  const [bl, setBl] = useState<BlMatch[]>([])
+  const [summary, setSummary] = useState<CustomerSummary | null>(null)
+  const [checking, setChecking] = useState(false)
+
+  useEffect(() => {
+    const q = name.trim()
+    if (!q) {
+      setBl([])
+      setSummary(null)
+      setChecking(false)
+      return
+    }
+    setChecking(true)
+    const t = setTimeout(async () => {
+      const [b, s] = await Promise.all([
+        db.call<BlMatch[]>('checkBlacklist', q),
+        db.call<CustomerSummary>('getCustomerSummary', q),
+      ])
+      setBl(b.ok ? b.data || [] : [])
+      setSummary(s.ok ? s.data : null)
+      setChecking(false)
+    }, 400)
+    return () => clearTimeout(t)
+  }, [name])
+
+  const q = name.trim()
+
+  return (
+    <div className="board-panel">
+      <div className="board-panel-head">
+        <Search size={14} />
+        <span className="board-panel-title">お客様チェック</span>
+      </div>
+      <input
+        type="text"
+        className="form-input"
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="お名前を入れると出禁・来店歴が出ます"
+        autoComplete="off"
+      />
+      {q && checking && <p className="muted small board-check-line">確認中...</p>}
+      {q && !checking && (
+        <>
+          {bl.length > 0 ? (
+            <div className="board-check-bl">
+              <AlertTriangle size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+              出禁に一致します（{bl.map((b) => b.name).join('、')}）
+              {bl.some((b) => b.reason) && (
+                <div className="board-check-reason">
+                  {bl.map((b) => b.reason).filter(Boolean).join(' / ')}
+                </div>
+              )}
+            </div>
+          ) : (
+            <p className="c-green small board-check-line">出禁には当たりません。</p>
+          )}
+          {summary && (
+            <p className="muted small board-check-line">
+              {summary.visitCount > 0
+                ? `来店 ${summary.visitCount}回 ／ 最終 ${fmtDate(summary.lastVisitAt)}${
+                    summary.lastCast ? `（${summary.lastCast}）` : ''
+                  }`
+                : '来店歴はありません（初めてのお客様）'}
+              {summary.cancelledResCount > 0 && ` ／ 予約キャンセル ${summary.cancelledResCount}回`}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
+// その営業日の連絡帳。書いた人と時刻を残す
+function HandoverNote({
+  note,
+  busy,
+  onSave,
+}: {
+  note: DailyNote
+  busy: boolean
+  onSave: (body: string) => void
+}) {
+  const [body, setBody] = useState(note.body)
+  const [editing, setEditing] = useState(false)
+
+  // 他の端末で書き換えられたら追随する（編集中は邪魔しない）
+  useEffect(() => {
+    if (!editing) setBody(note.body)
+  }, [note.body, editing])
+
+  return (
+    <div className="board-panel">
+      <div className="board-panel-head">
+        <Edit size={14} />
+        <span className="board-panel-title">申し送り</span>
+        {note.updatedByName && (
+          <span className="muted board-panel-meta">
+            最終更新 {note.updatedByName}
+          </span>
+        )}
+      </div>
+      <textarea
+        className="form-input board-note-area"
+        rows={3}
+        value={body}
+        onFocus={() => setEditing(true)}
+        onChange={(e) => setBody(e.target.value)}
+        placeholder="例）22時ごろ ○○様 来店予定 ／ VIP-2 の調子が悪い"
+      />
+      {body !== note.body && (
+        <div className="board-note-actions">
+          <button
+            className="btn-primary"
+            disabled={busy}
+            onClick={() => {
+              setEditing(false)
+              onSave(body)
+            }}
+          >
+            {busy ? '保存中...' : '保存'}
+          </button>
+          <button
+            className="btn-secondary"
+            disabled={busy}
+            onClick={() => {
+              setEditing(false)
+              setBody(note.body)
+            }}
+          >
+            元に戻す
+          </button>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// 受付がお客様を部屋へ通したときに、そのキャストの接客をここから始める。
+// startSession はキャスト名を引数に取るので、本人でなくても開始できる
+function StartForCastModal({
+  row,
+  rooms,
+  onClose,
+  onStarted,
+}: {
+  row: BoardRow
+  rooms: Array<RoomInfo & { using: SessionShape | null }>
+  onClose: () => void
+  onStarted: () => void
+}) {
+  // その人に付いている、まだ接客に変わっていない予約。あればそこから始める
+  const presetRes = row.reservations.find((r) => !r.converted) ?? null
+
+  const [room, setRoom] = useState(rooms.find((r) => !r.using)?.name || '')
+  const [customer, setCustomer] = useState(presetRes?.顧客名 || '')
+  const [slots, setSlots] = useState(
+    presetRes ? Math.max(1, Math.round((presetRes.予約時間 || 60) / 30)) : 2,  // 30分 = 1コマ
+  )
+  const [note, setNote] = useState('')
+  const [busy, setBusy] = useState(false)
+  const [bl, setBl] = useState<BlMatch[]>([])
+  const toast = useToast()
+
+  const roomInfo = rooms.find((r) => r.name === room)
+  const serviceType = roomInfo?.vip ? 'vip' : 'normal'
+  const names = customer.split(/[,、]/).map((s) => s.trim()).filter(Boolean)
+
+  // 予約から始めたときは、その予約を接客に変えてタイムラインから消す。
+  // お名前を書き換えたなら別のお客様なので紐付けない
+  const linkedReservationId =
+    presetRes && customer.trim() === presetRes.顧客名.trim() ? presetRes.reservation_id : undefined
+
+  async function submit(skipBlCheck = false) {
+    if (!room) {
+      toast.show('ルームを選んでください', 'err')
+      return
+    }
+    if (!names.length) {
+      toast.show('お客様のお名前を入れてください', 'err')
+      return
+    }
+    setBusy(true)
+    try {
+      const avail = await db.call<{ available: boolean; usedBy?: string }>('checkRoomAvailability', room)
+      if (avail.ok && !avail.data.available) {
+        toast.show(`「${room}」は ${avail.data.usedBy || '他のキャスト'} が使用中です`, 'err')
+        return
+      }
+      if (!skipBlCheck) {
+        const hits = await Promise.all(names.map((n) => db.call<BlMatch[]>('checkBlacklist', n)))
+        const found = hits.flatMap((h) => (h.ok ? h.data || [] : []))
+        if (found.length) {
+          setBl(found)
+          return
+        }
+      }
+      const r = await db.call('startSession', {
+        castName: row.cast,
+        room,
+        customerNames: names,
+        note: note.trim(),
+        serviceType,
+        presetSlots: slots,
+        reservationId: linkedReservationId,
+      })
+      if (r.ok) {
+        toast.show(`${row.cast} の応対を開始しました`)
+        onStarted()
+      } else {
+        toast.show((r as { error: string }).error || '開始に失敗しました', 'err')
+      }
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <Modal onClose={() => !busy && onClose()}>
+      <h3>{row.cast} の応対を開始</h3>
+      <div className="form-group">
+        <label className="form-label">ルーム</label>
+        <div className="select-wrap">
+          <select className="form-select" value={room} onChange={(e) => setRoom(e.target.value)}>
+            <option value="">選んでください</option>
+            {rooms.map((r) => (
+              <option key={r.name} value={r.name} disabled={!!r.using}>
+                {r.name}{r.vip ? '（VIP）' : ''}{r.using ? ` — ${r.using.対応者} 使用中` : ''}
+              </option>
+            ))}
+          </select>
+        </div>
+        <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
+          料金の種別はルームで決まります（今の選択: {serviceType === 'vip' ? 'VIP' : '通常'}）。
+        </p>
+      </div>
+      <div className="form-group">
+        <label className="form-label">お客様のお名前</label>
+        <input
+          type="text"
+          className="form-input"
+          value={customer}
+          onChange={(e) => setCustomer(e.target.value)}
+          placeholder="複数名は 、 か , で区切ります"
+          autoComplete="off"
+        />
+        {presetRes && (
+          <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
+            {linkedReservationId
+              ? `${fmtBizTime(presetRes.予約日時)} の予約から開始します（開始すると予約は接客に変わります）`
+              : 'お名前を変えたので、予約とは紐付けずに開始します'}
+          </p>
+        )}
+      </div>
+      <div className="form-group">
+        <label className="form-label">予定時間</label>
+        <div className="board-slot-btns">
+          {[1, 2, 3, 4].map((s) => (
+            <button
+              key={s}
+              type="button"
+              className={`btn-secondary ${slots === s ? 'active' : ''}`}
+              onClick={() => setSlots(s)}
+            >
+              {s * 30}分
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="form-group">
+        <label className="form-label">備考</label>
+        <input
+          type="text"
+          className="form-input"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+        />
+      </div>
+
+      {bl.length > 0 && (
+        <div className="board-check-bl">
+          <AlertTriangle size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
+          出禁に一致します（{bl.map((b) => b.name).join('、')}）。それでも開始しますか？
+        </div>
+      )}
+
+      <div className="modal-actions">
+        <button className="btn-secondary" onClick={onClose} disabled={busy}>キャンセル</button>
+        <button
+          className="btn-primary"
+          style={{ width: 'auto' }}
+          onClick={() => submit(bl.length > 0)}
+          disabled={busy}
+        >
+          {busy ? '開始中...' : bl.length > 0 ? 'それでも開始する' : '開始する'}
+        </button>
+      </div>
+      {toast.element}
+    </Modal>
   )
 }
 
@@ -351,7 +840,19 @@ function RecruitCard({
   )
 }
 
-function CastCard({ row }: { row: BoardRow }) {
+function CastCard({
+  row,
+  canRest,
+  busy,
+  onStart,
+  onRest,
+}: {
+  row: BoardRow
+  canRest: boolean
+  busy: boolean
+  onStart: () => void
+  onRest: () => void
+}) {
   return (
     <div className={`board-card ${row.busyNow ? 'busy' : 'free'}`}>
       <div className="board-card-head">
@@ -411,6 +912,24 @@ function CastCard({ row }: { row: BoardRow }) {
             .join('、')}
         </div>
       )}
+
+      <div className="board-card-actions">
+        <button
+          type="button"
+          className="btn-secondary board-start"
+          onClick={onStart}
+          disabled={busy || !!row.active}
+          title={row.active ? '対応中です' : `${row.cast} の応対を開始する`}
+        >
+          <Play size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
+          応対を開始
+        </button>
+        {canRest && (
+          <button type="button" className="board-rest" onClick={onRest} disabled={busy}>
+            お休みにする
+          </button>
+        )}
+      </div>
     </div>
   )
 }

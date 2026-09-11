@@ -189,7 +189,9 @@ function Dashboard({
             <ReservationTab
               castName={castName}
               isAdmin={isAdmin}
-              onStartSession={(preset) => {
+              // スタッフには接客画面が無く、開始フォームはログイン中の本人名で
+              // 記録するので、渡さない（渡すと「接客を開始」が空白画面に飛ぶ）
+              onStartSession={isStaff ? undefined : (preset) => {
                 setSessionPreset(preset)
                 setRoute('session')
               }}

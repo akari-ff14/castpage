@@ -286,3 +286,192 @@
   font-weight: 400;
   margin-left: 6px;
 }
+
+/* ── 2枚並べる段（ルーム / お客様チェック） ── */
+.board-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 760px) {
+  .board-pair {
+    grid-template-columns: 1fr;
+  }
+}
+
+.board-panel {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+}
+
+.board-panel-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.board-panel-title {
+  font-size: var(--fs-sm);
+  color: var(--gold);
+  font-weight: 600;
+}
+
+.board-panel-meta {
+  font-size: var(--fs-xs);
+  margin-left: auto;
+}
+
+/* ── ルームの空き ── */
+.board-rooms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.board-room {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-sm);
+  padding: 4px 9px;
+  font-size: var(--fs-sm);
+}
+
+.board-room.free {
+  border-color: var(--green-border);
+  background: var(--green-bg);
+}
+
+.board-room.used {
+  background: var(--bg);
+}
+
+.board-room-name {
+  color: var(--text);
+}
+
+.board-room-state {
+  font-size: var(--fs-xs);
+  color: var(--text-dim);
+}
+
+.board-room-state.free {
+  color: var(--green);
+}
+
+/* ── お客様チェック ── */
+.board-check-line {
+  margin: 8px 0 0;
+}
+
+.board-check-bl {
+  margin-top: 8px;
+  background: var(--red-bg);
+  border: 1px solid var(--red-border);
+  color: var(--red);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  font-size: var(--fs-sm);
+}
+
+.board-check-reason {
+  margin-top: 4px;
+  font-size: var(--fs-xs);
+  opacity: 0.85;
+}
+
+/* ── 申し送り ── */
+.board-note-area {
+  resize: vertical;
+}
+
+.board-note-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.board-note-actions .btn-primary,
+.board-note-actions .btn-secondary {
+  width: auto;
+  padding: 6px 16px;
+  font-size: var(--fs-sm);
+}
+
+/* ── 出勤表を作る導線 ── */
+.board-note {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.board-note-btn {
+  width: auto;
+  padding: 6px 14px;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+/* ── カードの操作 ── */
+.board-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+  margin-top: 2px;
+}
+
+.board-start {
+  width: auto;
+  padding: 5px 12px;
+  font-size: var(--fs-sm);
+}
+
+.board-rest,
+.board-off-back {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  padding: 4px 2px;
+  text-decoration: underline;
+}
+
+.board-rest:hover,
+.board-off-back:hover {
+  color: var(--text);
+}
+
+.board-off-item + .board-off-item {
+  margin-left: 10px;
+}
+
+.board-off-back {
+  margin-left: 4px;
+}
+
+/* 予定時間の選択 */
+.board-slot-btns {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.board-slot-btns .btn-secondary {
+  width: auto;
+  padding: 6px 14px;
+}
+
+.board-slot-btns .btn-secondary.active {
+  border-color: var(--gold);
+  color: var(--gold);
+}

@@ -2245,6 +2245,45 @@ export async function setRecruitTemplate(text: string): Promise<void> {
 }
 
 // ============================================================
+// API: 営業日ごとの申し送りメモ
+// ============================================================
+// 受付ボードの共有メモ。1営業日1枚。誰が最後に書いたかも残す
+
+export interface DailyNote {
+  body: string
+  updatedByName: string
+  updatedAt: string | null
+}
+
+export async function getDailyNote(businessDate: string): Promise<DailyNote> {
+  const { data, error } = await supabase
+    .from('daily_notes')
+    .select('body, updated_by_name, updated_at')
+    .eq('business_date', businessDate)
+    .maybeSingle()
+  if (error) throw error
+  return {
+    body: data?.body || '',
+    updatedByName: data?.updated_by_name || '',
+    updatedAt: data?.updated_at ?? null,
+  }
+}
+
+export async function saveDailyNote(businessDate: string, body: string): Promise<void> {
+  const me = await getMyCast()
+  const { error } = await supabase.from('daily_notes').upsert(
+    {
+      business_date: businessDate,
+      body,
+      updated_by_name: me?.name || '',
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: 'business_date' },
+  )
+  if (error) throw error
+}
+
+// ============================================================
 // API: Discord への予約通知（オプション）
 // ============================================================
 // Webhook URL は知っている人が誰でも投稿できてしまうので、
