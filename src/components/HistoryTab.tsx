@@ -71,6 +71,20 @@ function nowJstYearMonth(): { year: number; month: number } {
   }
 }
 
+// 履歴を何か月ぶん見るか。年・月で選んだ月を終わりにして、そこからさかのぼる
+const SPAN_OPTIONS: Array<{ value: number; label: string }> = [
+  { value: 1, label: '1か月' },
+  { value: 3, label: '3か月' },
+  { value: 6, label: '半年' },
+  { value: 12, label: '1年' },
+]
+
+// 「2026年7月 〜 2026年9月」。年をまたいでも月の引き算を Date に任せる
+function spanLabel(year: number, month: number, months: number): string {
+  const from = new Date(Date.UTC(year, month - months, 1))
+  return `${from.getUTCFullYear()}年${from.getUTCMonth() + 1}月 〜 ${year}年${month}月`
+}
+
 // 現在時刻（JST）を datetime-local 形式 "YYYY-MM-DDTHH:mm" で返す
 function nowJstInput(): string {
   return new Date(Date.now() + 9 * 60 * 60 * 1000).toISOString().slice(0, 16)
@@ -179,6 +193,8 @@ export default function HistoryTab({
   const initial = nowJstYearMonth()
   const [year, setYear] = useState(initial.year)
   const [month, setMonth] = useState(initial.month)
+  // 何か月ぶん見るか。年・月は期間の終わりで、そこからさかのぼる
+  const [months, setMonths] = useState(1)
   const [castFilter, setCastFilter] = useState<'mine' | 'all'>('mine')
   const [query, setQuery] = useState('')
   const [list, setList] = useState<HistorySession[]>([])
@@ -203,11 +219,11 @@ export default function HistoryTab({
   const load = useCallback(async () => {
     setLoading(true)
     setErr('')
-    const r = await db.call<HistorySession[]>('getHistory', { year, month })
+    const r = await db.call<HistorySession[]>('getHistory', { year, month, months })
     setLoading(false)
     if (r.ok) setList(r.data || [])
     else setErr(r.error)
-  }, [year, month])
+  }, [year, month, months])
 
   useEffect(() => {
     load()
@@ -409,7 +425,7 @@ export default function HistoryTab({
         {knownNames.map((n) => <option key={n} value={n} />)}
       </datalist>
       <div className="card filter-card">
-        <div className="form-row">
+        <div className="form-row history-period-row">
           <div className="form-group">
             <label className="form-label">年</label>
             <input
@@ -437,7 +453,29 @@ export default function HistoryTab({
               </select>
             </div>
           </div>
+          <div className="form-group">
+            <label className="form-label">期間</label>
+            <div className="select-wrap">
+              <select
+                className="form-select"
+                value={months}
+                onChange={(e) => setMonths(Number(e.target.value))}
+                aria-label="何か月ぶん表示するか"
+              >
+                {SPAN_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
         </div>
+        {/* 複数月のときだけ、どこからどこまでかを書いておく。
+            「9月・3か月」が 7〜9月 なのか 9〜11月 なのかで迷わせない */}
+        {months > 1 && (
+          <p className="history-period-hint muted small">{spanLabel(year, month, months)} の履歴</p>
+        )}
         <div className="filter-actions">
           <button
             className={`btn-pill ${castFilter === 'mine' ? 'active' : ''}`}

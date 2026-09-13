@@ -329,6 +329,13 @@ body {
   letter-spacing: 0.1em;
 }
 
+/* 24時をまたぐ枠の「30分のみ」。状態より一段小さく、押す前に気づける程度に */
+.bk-cell-note {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  opacity: 0.8;
+}
+
 /* 空き。ページで灯が点るのはここだけ。
    光は箱の縁で切らずに、ぼかして外へにじませる */
 .bk-cell-open {

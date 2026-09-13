@@ -35,6 +35,24 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 // お客様が選べるお時間。料金表が30分単位なので、その倍数で並べる
 const DURATIONS = [30, 60] as const
 
+// 枠の開始を「その日の何分目」で数える。4時前は翌日扱いで 24:xx（DB の slot_start_at と同じ区切り）
+function slotMinutes(slotTime: string): number {
+  const [hh, mm] = slotTime.split(':').map(Number)
+  return (hh < 4 ? hh + 24 : hh) * 60 + mm
+}
+
+// その枠で選べるお時間。開始 +60分 が 24:00 を超える枠（既定の 23:20）は 30分だけ。
+// 店の「24時をまたぐ予約は受けない」に合わせたもので、DB 側 (slot_allows_duration) と同じ判定
+function allowedDurations(slotTime: string): number[] {
+  return DURATIONS.filter((d) => d <= 30 || slotMinutes(slotTime) + d <= 24 * 60)
+}
+
+// その枠で選べるいちばん長いお時間
+function slotMaxDuration(slotTime: string): number {
+  const list = allowedDurations(slotTime)
+  return list[list.length - 1]
+}
+
 // 店は「40万G」と書くので、こちらもそれに合わせる。
 // 万でちょうど割り切れないときだけ、桁区切りのそのままの数字にする
 function formatGil(n: number): string {
@@ -199,7 +217,9 @@ function SlotPicker() {
   // お席とお時間。料金表が読めたら、いちばん安いものを最初に選んでおく
   const [prices, setPrices] = useState<ServicePrice[]>([])
   const [serviceType, setServiceType] = useState('')
-  const [durationMin, setDurationMin] = useState<number>(60)
+  // お時間は「お客様が選んだもの」を覚えておき、枠ごとに選べる範囲へ落として使う。
+  // 23:20 の枠で 30分に落ちても、次に 21:00 を開いたら元の 60分に戻る
+  const [chosenDur, setChosenDur] = useState<number>(60)
   const [email, setEmail] = useState('')
   const [note, setNote] = useState('')
   const [formErr, setFormErr] = useState('')
@@ -240,6 +260,11 @@ function SlotPicker() {
       })
       .catch(() => setServiceType((cur) => cur || 'normal'))
   }, [])
+
+  // 開いている枠で選べるお時間と、その中での実際の長さ
+  const allowed = picked ? allowedDurations(picked.slot.slotTime) : [...DURATIONS]
+  const durationMin = allowed.includes(chosenDur) ? chosenDur : allowed[allowed.length - 1]
+  const only30 = allowed.length === 1
 
   // 見積もり = 30分あたりの単価 × 人数 × コマ数。店内アプリの計算と同じ式
   const unitPrice = prices.find((p) => p.key === serviceType)?.price ?? 0
@@ -509,14 +534,14 @@ function SlotPicker() {
                 <div className="bk-field">
                   <span className="bk-label-row" id="bk-dur-label">お時間</span>
                   <div className="bk-choice" role="radiogroup" aria-labelledby="bk-dur-label">
-                    {DURATIONS.map((d) => (
+                    {allowed.map((d) => (
                       <button
                         key={d}
                         type="button"
                         role="radio"
                         aria-checked={durationMin === d}
                         className={`bk-chip ${durationMin === d ? 'is-on' : ''}`}
-                        onClick={() => setDurationMin(d)}
+                        onClick={() => setChosenDur(d)}
                       >
                         <span className="bk-chip-name">{d}分</span>
                         <span className="bk-chip-sub">
@@ -525,6 +550,11 @@ function SlotPicker() {
                       </button>
                     ))}
                   </div>
+                  {only30 && (
+                    <p className="bk-field-hint">
+                      この枠は24時までのため、30分のみお選びいただけます。
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -648,13 +678,16 @@ function SlotPicker() {
   )
 }
 
-// キャスト × 枠のマス目。新規の申し込みと、日時の変更申請で同じものを使う
+// キャスト × 枠のマス目。新規の申し込みと、日時の変更申請で同じものを使う。
+// needDuration は変更申請のとき、今のご予約の長さ。それが収まらない枠は選ばせない
 function CastSlots({
   day,
   onPick,
+  needDuration,
 }: {
   day: BookingDay
   onPick: (castId: string, castName: string, slot: PublicSlot) => void
+  needDuration?: number
 }) {
   return (
     <div className="bk-board">
@@ -666,10 +699,14 @@ function CastSlots({
         >
           <span className="bk-row-cast">{cast.castName}</span>
           {cast.slots.map((slot, col) => {
-            const canBook = day.isAccepting && slot.state === 'open'
+            const maxDur = slotMaxDuration(slot.slotTime)
+            // 24時をまたぐ枠は30分だけ。60分のご予約はここへ移せない
+            const only30 = maxDur < 60
+            const tooLong = needDuration !== undefined && maxDur < Math.max(30, needDuration || 60)
+            const canBook = day.isAccepting && slot.state === 'open' && !tooLong
             // 受付開始前は空き状況を伏せる。金色で「空き」と出すと押せそうに見えて、
             // 押せないボタンを前にした人が困る。時刻だけ並べて予告にとどめる
-            const shown = day.isAccepting ? slot.state : 'closed'
+            const shown = day.isAccepting && !tooLong ? slot.state : 'closed'
             return (
               <button
                 key={slot.slotNo}
@@ -683,14 +720,17 @@ function CastSlots({
                 // どのキャストの枠か分からなくなる。ここで補う
                 aria-label={
                   day.isAccepting
-                    ? `${cast.castName} ${slotRange(slot.slotTime)} ${STATE_LABEL[slot.state]}`
-                    : `${cast.castName} ${slotRange(slot.slotTime)} 受付開始前`
+                    ? `${cast.castName} ${slotRange(slot.slotTime, maxDur)} ${STATE_LABEL[shown]}${only30 ? ' 30分のみ' : ''}`
+                    : `${cast.castName} ${slotRange(slot.slotTime, maxDur)} 受付開始前`
                 }
                 onClick={() => onPick(cast.castId, cast.castName, slot)}
               >
                 <span className="bk-cell-time">{slot.slotTime}</span>
                 {day.isAccepting && (
-                  <span className="bk-cell-state">{STATE_LABEL[slot.state]}</span>
+                  <span className="bk-cell-state">{STATE_LABEL[shown]}</span>
+                )}
+                {only30 && slot.state !== 'confirmed' && (
+                  <span className="bk-cell-note">30分のみ</span>
                 )}
               </button>
             )
@@ -801,6 +841,12 @@ function MyReservations() {
 
   async function pickNewSlot(castId: string, slot: PublicSlot) {
     if (!changing) return
+    // 長さは今のご予約のまま移すので、60分が収まらない枠（23:20 など）へは移せない。
+    // マス目側で押せなくしてあるが、念のためここでも止める
+    if (slotMaxDuration(slot.slotTime) < Math.max(30, changing.durationMin || 60)) {
+      setChangeErr('その枠は30分のみのため、このご予約は移せません。取り消して30分で申し込み直してください')
+      return
+    }
     setBusy(true)
     setChangeErr('')
     const r = await requestChange({
@@ -964,6 +1010,7 @@ function MyReservations() {
                     </div>
                     <CastSlots
                       day={day}
+                      needDuration={changing.durationMin}
                       onPick={(castId, _castName, slot) => !busy && pickNewSlot(castId, slot)}
                     />
                   </div>

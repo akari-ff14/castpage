@@ -393,7 +393,9 @@ export async function getReservations(): Promise<ReservationShape[]> {
   }))
 }
 
-export async function getHistory(params?: { year?: number; month?: number }): Promise<SessionShape[]> {
+// year/month は期間の「終わりの月」。months で何か月ぶんさかのぼるか（既定1＝その月だけ）。
+// 例: 2026/9 で months=3 → 2026/7/1 〜 2026/9/30
+export async function getHistory(params?: { year?: number; month?: number; months?: number }): Promise<SessionShape[]> {
   const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
   // 並び・月フィルタは started_at（実際の接客日時）基準。
   // created_at 基準だと過去分を後から手入力した際に入力日で並んでしまい、時系列が崩れる
@@ -404,11 +406,12 @@ export async function getHistory(params?: { year?: number; month?: number }): Pr
     .order('started_at', { ascending: false })
 
   if (params?.year && params?.month) {
-    // JST 月初〜翌月初
+    // JST 期間の初月の月初〜終わりの月の翌月初。Date.UTC は月が負でも年をまたいで解決する
     const y = params.year
     const m = params.month
+    const span = Math.max(1, Math.floor(Number(params.months) || 1))
     const JST_OFFSET_MS = 9 * 60 * 60 * 1000
-    const startUtc = new Date(Date.UTC(y, m - 1, 1) - JST_OFFSET_MS).toISOString()
+    const startUtc = new Date(Date.UTC(y, m - span, 1) - JST_OFFSET_MS).toISOString()
     const endUtc = new Date(Date.UTC(y, m, 1) - JST_OFFSET_MS).toISOString()
     q = q.gte('started_at', startUtc).lt('started_at', endUtc)
   }
@@ -2352,16 +2355,22 @@ export async function saveDailyNote(businessDate: string, body: string): Promise
 // Webhook URL は知っている人が誰でも投稿できてしまうので、
 // store_settings ではなく Vault に置いてある。
 // 画面からは「設定されているか」しか分からず、URL 自体は読めない。
+//
+// 通知先は2本（migration 32）。
+//   'shop'     … 店内アプリの動き（予約追加・対応開始・延長・対応終了）
+//   'customer' … 予約フォーム（お客様の申込・日時変更・取り消し・予約確定）
+// お客様側が未設定なら店内アプリ側に流れる（1本で使っていた店はそのまま）。
+export type DiscordTarget = 'shop' | 'customer'
 
-export async function hasDiscordWebhook(): Promise<boolean> {
-  const { data, error } = await supabase.rpc('has_discord_webhook')
+export async function hasDiscordWebhook(target: DiscordTarget = 'shop'): Promise<boolean> {
+  const { data, error } = await supabase.rpc('has_discord_webhook', { p_target: target })
   if (error) return false
   return !!data
 }
 
 // 空文字を渡すと通知を止める（保管庫から消す）
-export async function setDiscordWebhook(url: string): Promise<void> {
-  const { data, error } = await supabase.rpc('set_discord_webhook', { p_url: url })
+export async function setDiscordWebhook(url: string, target: DiscordTarget = 'shop'): Promise<void> {
+  const { data, error } = await supabase.rpc('set_discord_webhook', { p_url: url, p_target: target })
   if (error) throw error
   const r = (data || {}) as { ok?: boolean; error?: string }
   if (!r.ok) throw new Error(r.error || '保存できませんでした')

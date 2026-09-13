@@ -295,6 +295,13 @@
   white-space: nowrap;
 }
 
+/* 通知先1本ぶんの区画。上の説明文と、2本目との間を罫線で区切る */
+.discord-target {
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px dashed var(--border);
+}
+
 /* 募集文のひな形で使える差し込みの説明 */
 .store-token-list {
   margin: 0 0 var(--space-3);
