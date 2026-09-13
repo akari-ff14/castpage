@@ -8,8 +8,9 @@
   margin-top: 4px;
 }
 
-/* 年・月・期間の3列。既定の form-row は2列なので、ここだけ3列に広げる */
-.history-period-row {
+/* 年・月・期間の3列。既定の form-row は2列なので、ここだけ3列に広げる。
+   App.css の .form-row がバンドルで後ろに来るので、2クラスで詳細度を上げて勝たせる */
+.form-row.history-period-row {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
