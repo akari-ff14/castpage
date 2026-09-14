@@ -6,8 +6,7 @@
 //   ・その人は何時から受けられるか（対応中・予約・休憩ぶんを引いたあと）
 //   ・その人に今どのお客様の予約が付いているか
 //
-// 空き時刻の数え方は予約タブ（ReservationTab の castAvailability）と同じで、
-// そこに受付日で止めた枠＝休憩と、キャストの勤務時間帯（出勤前・本日終了）を足している。
+// 空き時刻の数え方は lib/availability.ts に1つだけ置いてあり、予約タブの空き時刻チップと同じ。
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -37,6 +36,7 @@ import {
 import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
 import { fmtBizTime, fmtDate, fmtGil, jstBusinessDate } from '../lib/format'
 import { DEFAULT_BUSINESS_HOURS, fmtShift, type CastShift } from '../lib/shift'
+import { castAvailabilityAt, compareAvailability, type BreakSpan } from '../lib/availability'
 import { Clock, Calendar, RefreshCw, AlertTriangle, Check, Play, Search, Home as HomeIcon, Crown, Edit } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -53,17 +53,6 @@ interface BlMatch {
   reason?: string
 }
 
-// 接客と接客のあいだに置く片付けの時間
-const INTERVAL_MIN = 10
-// 止めた枠は「1組ぶん」埋まる。公開予約ページと同じ 60分＋インターバル で数える
-const SLOT_HOLD_MIN = 70
-
-interface BreakSpan {
-  slotNo: number
-  startMs: number
-  endMs: number
-}
-
 interface BoardRow {
   castId: string
   cast: string
@@ -77,15 +66,6 @@ interface BoardRow {
   active: SessionShape | null
   reservations: ReservationShape[]
   breaks: BreakSpan[]
-}
-
-// 受付日の枠時刻（"23:20"）を、その営業日の実時刻に直す。
-// 4時より前は翌日にまたぐ、という区切りは DB の slot_start_at と揃えてある
-function slotStartMs(businessDate: string, hhmm: string): number {
-  const [y, m, d] = businessDate.split('-').map(Number)
-  const [hh, mm] = hhmm.split(':').map(Number)
-  if ([y, m, d, hh, mm].some((n) => !Number.isFinite(n))) return NaN
-  return Date.UTC(y, m - 1, d + (hh < 4 ? 1 : 0), hh, mm) - 9 * 60 * 60 * 1000
 }
 
 function bizDateLabel(businessDate: string): string {
@@ -195,99 +175,42 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const rows: BoardRow[] = useMemo(() => {
     void tick
     const now = Date.now()
-    const INTERVAL_MS = INTERVAL_MIN * 60 * 1000
 
     return castsOnDuty
       .map((c) => {
-        const blocks: Array<{ start: number; end: number; label: string }> = []
-
-        // 今日の勤務時間帯。出勤前は受けられない（勤務の終わりは最後に見る）
+        // 今日の勤務時間帯: その日だけの上書き → キャストの既定 → 店の営業時間
         const shift = day?.shifts[c.id] ?? c.shift ?? businessHours
-        const shiftStartMs = slotStartMs(businessDate, shift.from)
-        const shiftEndMs = slotStartMs(businessDate, shift.until)
-        if (!isNaN(shiftStartMs) && shiftStartMs > now) {
-          blocks.push({ start: 0, end: shiftStartMs, label: '出勤前' })
-        }
-
-        // 対応中は、終わる予定＋片付けまで塞がっている
+        const avail = castAvailabilityAt({
+          now,
+          businessDate,
+          castId: c.id,
+          castName: c.name,
+          shift,
+          activeSessions,
+          reservations: todayReservations,
+          day,
+        })
         const active = activeSessions.find((s) => s.対応者 === c.name) ?? null
-        if (active) {
-          const end = new Date(active.対応終了時間).getTime()
-          if (!isNaN(end)) {
-            blocks.push({
-              start: 0,
-              end: end + INTERVAL_MS,
-              label: `対応中${active.顧客名 ? `（${active.顧客名}様）` : ''}`,
-            })
-          }
-        }
-
         const mine = todayReservations
           .filter((r) => r.キャスト名 === c.name)
           .sort((a, b) => new Date(a.予約日時).getTime() - new Date(b.予約日時).getTime())
-
-        for (const r of mine) {
-          if (r.converted) continue                          // すでに接客に変わったぶんは対応中が拾う
-          const start = new Date(r.予約日時).getTime()
-          if (isNaN(start)) continue
-          const end = start + (r.予約時間 || 60) * 60 * 1000 + INTERVAL_MS
-          if (end <= now) continue                           // 終わった予約は空きの判断に関係ない
-          blocks.push({
-            start,
-            end,
-            label: `予約${r.顧客名 ? `（${r.顧客名}様）` : ''}`,
-          })
-        }
-
-        // 受付日で止めた枠 = その時間は受けない（休憩・私用など）
-        const breaks: BreakSpan[] = []
-        for (const b of day?.blocks ?? []) {
-          if (b.castId !== c.id) continue
-          const hhmm = day?.slotTimes[b.slotNo - 1]
-          if (!hhmm) continue
-          const startMs = slotStartMs(businessDate, hhmm)
-          if (isNaN(startMs)) continue
-          const endMs = startMs + SLOT_HOLD_MIN * 60 * 1000
-          breaks.push({ slotNo: b.slotNo, startMs, endMs })
-          if (endMs > now) blocks.push({ start: startMs, end: endMs, label: '休憩（受付停止）' })
-        }
-        breaks.sort((a, b) => a.startMs - b.startMs)
-
-        // 今から順に、塞がっている区間をたどって最初の空きを探す
-        blocks.sort((a, b) => a.start - b.start)
-        let availMs = now
-        let blockedBy = ''
-        for (const b of blocks) {
-          if (b.start <= availMs && availMs < b.end) {
-            availMs = b.end
-            blockedBy = b.label
-          }
-        }
-
-        // 次に受けられる時刻が勤務の終わりを過ぎていたら、今日はもう受けられない
-        const ended = !isNaN(shiftEndMs) && availMs >= shiftEndMs
 
         return {
           castId: c.id,
           cast: c.name,
           attribute: c.attribute,
           shift,
-          shiftEndMs,
-          ended,
-          availMs,
-          busyNow: availMs > now,
-          blockedBy,
+          shiftEndMs: avail.shiftEndMs,
+          ended: avail.ended,
+          availMs: avail.availMs,
+          busyNow: avail.busyNow,
+          blockedBy: avail.blockedBy,
           active,
           reservations: mine,
-          breaks,
+          breaks: avail.breaks,
         }
       })
-      .sort(
-        (a, b) =>
-          Number(a.ended) - Number(b.ended) ||
-          a.availMs - b.availMs ||
-          a.cast.localeCompare(b.cast, 'ja'),
-      )
+      .sort(compareAvailability)
   }, [castsOnDuty, activeSessions, todayReservations, day, businessDate, businessHours, tick])
 
   const freeNow = rows.filter((r) => !r.busyNow && !r.ended).length

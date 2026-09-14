@@ -3,13 +3,20 @@ import {
   db,
   decideReservation,
   getPendingReservations,
+  getReservationDays,
   getReservationTimeStep,
+  getShiftRules,
+  listCastRoster,
   notifyReservationDecision,
   DEFAULT_RESERVATION_TIME_STEP,
+  type CastRosterRow,
   type CustomerSummary,
   type PendingReservation,
+  type ReservationDay,
 } from '../lib/db'
-import { fmtCurrency, fmtDate, fmtDateTime, fmtBizTime } from '../lib/format'
+import { fmtCurrency, fmtDate, fmtDateTime, fmtBizTime, jstBusinessDate } from '../lib/format'
+import { DEFAULT_BUSINESS_HOURS, fmtShift, type CastShift } from '../lib/shift'
+import { castAvailabilityAt, compareAvailability, INTERVAL_MIN } from '../lib/availability'
 import { useRealtimeReservations, useActiveSessions } from '../lib/useRealtimeSessions'
 import { Play, Clock, Plus, Minus, Sparkles, AlertTriangle, Check, Close } from '../icons'
 import Modal from './Modal'
@@ -167,6 +174,12 @@ export default function ReservationTab({
   // フォーム関連
   const [casts, setCasts] = useState<string[]>([])
   const [rooms, setRooms] = useState<string[]>([])
+  // 空き時刻チップに要るもの: 名簿（勤務時間帯つき）、今日の受付日（出勤・その日だけの時間・止めた枠）、営業時間
+  const [roster, setRoster] = useState<CastRosterRow[]>([])
+  const [today, setToday] = useState<ReservationDay | null>(null)
+  const [businessHours, setBusinessHours] = useState<CastShift>(DEFAULT_BUSINESS_HOURS)
+  // 「次に入れる時刻」は時間が経つだけで変わるので、1分ごとに引き直す
+  const [tick, setTick] = useState(0)
   const [pricing, setPricing] = useState<PricingEntry[]>([])
   // 下書きが残っていれば復元してフォームを開き直す（タブ切替による入力消失対策）
   const [formOpen, setFormOpen] = useState(() => loadDraft() !== null)
@@ -235,51 +248,57 @@ export default function ReservationTab({
   // 各キャストの稼働状況（誰が何時から何時まで対応か）をリアルタイム取得
   const { sessions: activeSessions } = useActiveSessions()
 
-  // 全キャストの「次に入れる時刻」を計算する。
-  // 進行中の接客（終了予定 + インターバル）と、未来の予約（開始〜終了 + インターバル）を
-  // 塞がっている時間帯として扱い、今から見て最初に空く時刻を求める。
-  const INTERVAL_MIN = 10
+  useEffect(() => {
+    const t = setInterval(() => setTick((x) => x + 1), 60 * 1000)
+    return () => clearInterval(t)
+  }, [])
+
+  // 全キャストの「次に入れる時刻」。数え方は受付ボードと同じ（lib/availability.ts）:
+  // 勤務時間帯（出勤前・本日終了）、対応中の接客、まだ接客に変わっていない予約、
+  // 受付日で止めた枠を塞がっている時間として、今から見て最初に空く時刻を求める
   const castAvailability = useMemo(() => {
+    void tick
     const now = Date.now()
-    const INTERVAL_MS = INTERVAL_MIN * 60 * 1000
-    const busy = new Map<string, Array<{ start: number; end: number; label: string }>>()
-    const push = (cast: string, start: number, end: number, label: string) => {
-      if (!cast) return
-      if (!busy.has(cast)) busy.set(cast, [])
-      busy.get(cast)!.push({ start, end: end + INTERVAL_MS, label })
-    }
-    for (const s of activeSessions) {
-      const end = new Date(s.対応終了時間).getTime()
-      if (isNaN(end)) continue
-      push(s.対応者, 0, end, `対応中${s.顧客名 ? `（${s.顧客名}）` : ''}`)
-    }
-    for (const r of list) {
-      if (r.キャンセル済 || r.converted) continue
-      const start = new Date(r.予約日時).getTime()
-      if (isNaN(start)) continue
-      const end = start + (r.予約時間 || 60) * 60 * 1000
-      if (end + INTERVAL_MS <= now) continue  // 終わった予約は無視
-      push(r.キャスト名, start, end, `予約${r.顧客名 ? `（${r.顧客名}）` : ''}`)
-    }
-    const allCasts = casts.length
-      ? casts
-      : [...new Set([...activeSessions.map((s) => s.対応者), ...list.map((r) => r.キャスト名)])].filter(Boolean)
-    return allCasts
-      .map((cast) => {
-        const blocks = (busy.get(cast) || []).sort((a, b) => a.start - b.start)
-        let availMs = now
-        let blockedBy = ''
-        // 連続して塞がっている区間をたどって最初の空きを探す
-        for (const b of blocks) {
-          if (b.start <= availMs && availMs < b.end) {
-            availMs = b.end
-            blockedBy = b.label
-          }
+    const businessDate = jstBusinessDate()
+    const todayReservations = list.filter(
+      (r) => !r.キャンセル済 && r.status !== 'rejected' && jstBusinessDate(r.予約日時) === businessDate,
+    )
+    const onDuty = today ? new Set(today.castIds) : null
+
+    // 名簿が読めていないあいだは、接客・予約に出てくる名前だけで組み立てる
+    const people: Array<{ id: string; name: string; shift: CastShift | null }> = roster.length
+      ? roster.filter((c) => c.role === 'cast').map((c) => ({ id: c.id, name: c.name, shift: c.shift }))
+      : [...new Set([...activeSessions.map((s) => s.対応者), ...list.map((r) => r.キャスト名)])]
+          .filter(Boolean)
+          .map((name) => ({ id: '', name, shift: null }))
+
+    return people
+      .map((c) => {
+        // 受付日でお休みにした人は、今日は受けない（別の日の予約は入れられるのでチップは残す）
+        const off = !!onDuty && !!c.id && !onDuty.has(c.id)
+        const shift = today?.shifts[c.id] ?? c.shift ?? businessHours
+        const a = castAvailabilityAt({
+          now,
+          businessDate,
+          castId: c.id,
+          castName: c.name,
+          shift,
+          activeSessions,
+          reservations: todayReservations,
+          day: today,
+        })
+        return {
+          cast: c.name,
+          shift,
+          off,
+          ended: off || a.ended,
+          availMs: a.availMs,
+          busyNow: a.busyNow,
+          blockedBy: a.blockedBy,
         }
-        return { cast, availMs, busyNow: availMs > now, blockedBy }
       })
-      .sort((a, b) => a.availMs - b.availMs || a.cast.localeCompare(b.cast, 'ja'))
-  }, [activeSessions, list, casts])
+      .sort(compareAvailability)
+  }, [activeSessions, list, roster, today, businessHours, tick])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -318,10 +337,17 @@ export default function ReservationTab({
     }
   }, [isAdmin])
 
+  // 今日の受付日（出勤・その日だけの勤務時間・止めた枠）。空き時刻チップの材料
+  const loadToday = useCallback(() => {
+    const bd = jstBusinessDate()
+    getReservationDays(bd, bd).then((days) => setToday(days[0] ?? null)).catch(() => {})
+  }, [])
+
   const reloadAll = useCallback(() => {
     load()
     loadPending()
-  }, [load, loadPending])
+    loadToday()
+  }, [load, loadPending, loadToday])
 
   useEffect(() => {
     load()
@@ -408,7 +434,11 @@ export default function ReservationTab({
     })()
     // 時刻刻みの設定（失敗時は既定値のまま）
     getReservationTimeStep().then(setTimeStep).catch(() => {})
-  }, [])
+    // 空き時刻チップの材料（どれも失敗したら無いものとして計算する）
+    listCastRoster().then(setRoster).catch(() => {})
+    getShiftRules().then((r) => setBusinessHours(r.businessHours)).catch(() => {})
+    loadToday()
+  }, [loadToday])
 
   const filtered = list.filter((r) => {
     if (castFilter === 'mine' && r.キャスト名 !== castName) return false
@@ -666,16 +696,23 @@ export default function ReservationTab({
       <div className="card avail-card">
         <div className="avail-head">
           <Clock size={14} style={{ verticalAlign: '-2px', marginRight: 6 }} />
-          各キャストの次に入れる時刻（進行中の接客・予約 ＋{INTERVAL_MIN}分インターバルを考慮）
+          各キャストの次に入れる時刻（勤務時間帯・進行中の接客・予約 ＋{INTERVAL_MIN}分インターバルを考慮）
         </div>
         {castAvailability.length === 0 ? (
           <p className="muted small" style={{ margin: 0 }}>キャスト情報を読み込み中...</p>
         ) : (
           <div className="avail-list">
             {castAvailability.map((a) => (
-              <div key={a.cast} className="avail-row">
-                <span className="avail-cast">{a.cast}</span>
-                {a.busyNow ? (
+              <div key={a.cast} className={`avail-row${a.ended ? ' is-ended' : ''}`}>
+                <span className="avail-cast">
+                  {a.cast}
+                  <span className="avail-shift muted">{fmtShift(a.shift)}</span>
+                </span>
+                {a.off ? (
+                  <span className="avail-time avail-ended">本日お休み</span>
+                ) : a.ended ? (
+                  <span className="avail-time avail-ended">本日終了</span>
+                ) : a.busyNow ? (
                   <>
                     <span className="avail-time">{fmtBizTime(a.availMs)}〜</span>
                     <span className="avail-meta muted">{a.blockedBy}</span>
@@ -846,13 +883,13 @@ export default function ReservationTab({
                 <button
                   type="button"
                   key={a.cast}
-                  className={`res-modal-avail-chip${form.castName === a.cast ? ' active' : ''}`}
+                  className={`res-modal-avail-chip${form.castName === a.cast ? ' active' : ''}${a.ended ? ' is-ended' : ''}`}
                   onClick={() => setForm((f) => ({ ...f, castName: a.cast }))}
-                  title={a.busyNow ? a.blockedBy : '今すぐ対応可能'}
+                  title={`勤務 ${fmtShift(a.shift)}${a.off ? '（本日お休み）' : a.ended ? '（本日終了）' : a.busyNow ? ` ／ ${a.blockedBy}` : ' ／ 今すぐ対応可能'}`}
                 >
                   <span className="chip-cast">{a.cast}</span>
-                  <span className={`chip-time${a.busyNow ? '' : ' free'}`}>
-                    {a.busyNow ? `${fmtBizTime(a.availMs)}〜` : '今すぐOK'}
+                  <span className={`chip-time${a.ended ? ' ended' : a.busyNow ? '' : ' free'}`}>
+                    {a.off ? '本日お休み' : a.ended ? '本日終了' : a.busyNow ? `${fmtBizTime(a.availMs)}〜` : '今すぐOK'}
                   </span>
                 </button>
               ))}
