@@ -130,7 +130,7 @@
 .rday-grid-head,
 .rday-grid-row {
   display: grid;
-  grid-template-columns: 7.5em repeat(3, 1fr);
+  grid-template-columns: 8.5em repeat(3, 1fr);
   gap: var(--space-1);
   align-items: center;
 }
@@ -195,6 +195,84 @@
   background: transparent;
   color: var(--text-muted);
   cursor: default;
+}
+
+/* 勤務時間外の枠。押せない。止めた枠（赤）とは別物なので色を付けない */
+.rday-cell.is-outside {
+  border-style: dashed;
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: default;
+}
+
+/* 名前と、その下の勤務時間帯 */
+.rday-grid-cast {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+/* 押すと、この日だけの時間を変える欄が開く */
+.rday-shift {
+  align-self: flex-start;
+  margin-left: 22px;
+  padding: 0 4px;
+  border: 1px dashed transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-dim);
+  font-family: inherit;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.rday-shift:hover,
+.rday-shift.is-editing {
+  border-color: var(--border2);
+  color: var(--text);
+}
+
+/* この日だけ変えてある */
+.rday-shift.is-override {
+  color: var(--gold);
+}
+
+.rday-shift-editor {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px dashed var(--border2);
+  border-radius: var(--radius-sm);
+  background: var(--surface2);
+}
+
+.rday-shift-editor .shift-select {
+  flex: 1 1 16em;
+}
+
+.rday-shift-editor-actions {
+  display: flex;
+  gap: var(--space-2);
+  margin-left: auto;
+}
+
+.rday-shift-editor-actions .btn-secondary {
+  width: auto;
+  padding: 4px 10px;
+  font-size: var(--fs-xs);
+}
+
+/* カードの「時間」行。この日だけ変えた人は色を変える */
+.rday-slot-override {
+  border-color: var(--gold);
+  color: var(--gold);
 }
 
 /* カードに出す「受付なし」の一覧 */

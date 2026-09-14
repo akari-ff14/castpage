@@ -6,7 +6,8 @@
 
 import { supabase } from './supabaseClient'
 
-export type SlotState = 'open' | 'pending' | 'confirmed' | 'closed'
+// off = そのキャストの勤務時間外（22時からの人の 21:00 の枠など）
+export type SlotState = 'open' | 'pending' | 'confirmed' | 'closed' | 'off'
 
 export interface PublicSlot {
   businessDate: string
@@ -20,6 +21,18 @@ export interface PublicSlot {
   slotTime: string
   startsAt: string
   state: SlotState
+  maxDurationMin: number    // この枠で選べるいちばん長いお時間（60 か 30）。店側の判定を写す
+}
+
+// 枠の開始を「その日の何分目」で数える。4時前は翌日扱いで 24:xx（DB の slot_start_at と同じ区切り）
+function slotMinutes(slotTime: string): number {
+  const [hh, mm] = slotTime.split(':').map(Number)
+  return (hh < 4 ? hh + 24 : hh) * 60 + mm
+}
+
+// 店側から長さが来なかったときの保険。開始 +60分 が 24:00 を超える枠は 30分だけ
+function fallbackMaxDuration(slotTime: string): number {
+  return slotMinutes(slotTime) + 60 <= 24 * 60 ? 60 : 30
 }
 
 // 1日分をまとめた形。画面はこの単位で描く
@@ -57,6 +70,7 @@ export async function fetchBookingDays(fromDate: string, toDate: string): Promis
     slotTime: String(r.slot_time || ''),
     startsAt: String(r.starts_at),
     state: (r.state as SlotState) || 'closed',
+    maxDurationMin: Number(r.max_duration_min) || fallbackMaxDuration(String(r.slot_time || '')),
   }))
 
   const byDate = new Map<string, BookingDay>()

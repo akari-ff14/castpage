@@ -4,13 +4,16 @@ import {
   DEFAULT_SLOT_TIMES,
   deleteReservationDay,
   getReservationDays,
+  getShiftRules,
   listAllCasts,
   saveReservationDay,
   type CastAdminRow,
   type ReservationDay,
 } from '../../lib/db'
 import { jstToday } from '../../lib/format'
+import { DEFAULT_BUSINESS_HOURS, fmtShift, shiftCoversSlot, type CastShift } from '../../lib/shift'
 import Modal from '../Modal'
+import ShiftSelect from '../ShiftSelect'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
 import './ReservationDayAdmin.css'
@@ -97,6 +100,8 @@ interface FormState {
   note: string
   offCastIds: string[]    // お休みのキャスト。チェックが付いた人が休み
   blocked: Set<string>    // 止めた枠。blockKey(castId, slotNo) の集合
+  shifts: Record<string, CastShift>  // castId → その日だけの勤務時間帯
+  editingShift: string | null        // 勤務時間帯の欄を開いているキャスト
   isNew: boolean
 }
 
@@ -112,6 +117,8 @@ function emptyForm(businessDate: string): FormState {
     // 新しい日は「全員出勤」から始める。休む人にだけチェックを付けてもらう
     offCastIds: [],
     blocked: new Set(),
+    shifts: {},
+    editingShift: null,
     isNew: true,
   }
 }
@@ -125,6 +132,8 @@ export default function ReservationDayAdmin() {
   const [form, setForm] = useState<FormState>(() => emptyForm(jstToday()))
   const [busy, setBusy] = useState(false)
   const [deleting, setDeleting] = useState<ReservationDay | null>(null)
+  // 勤務時間帯を決めていないキャストの表示に使う営業時間
+  const [businessHours, setBusinessHours] = useState<CastShift>(DEFAULT_BUSINESS_HOURS)
   const toast = useToast()
 
   const load = useCallback(async () => {
@@ -146,12 +155,23 @@ export default function ReservationDayAdmin() {
     listAllCasts()
       .then((all) => setCasts(all.filter((c) => c.active && c.role === 'cast')))
       .catch(() => {})
+    getShiftRules()
+      .then((r) => setBusinessHours(r.businessHours))
+      .catch(() => {})
   }, [load])
 
   const castNameById = useMemo(
     () => new Map(casts.map((c) => [c.id, c.name])),
     [casts],
   )
+
+  const castById = useMemo(() => new Map(casts.map((c) => [c.id, c])), [casts])
+
+  // その日のそのキャストの勤務時間帯。その日だけの上書き → キャストの既定 → 無し（全枠）。
+  // 枠の「時間外」判定は DB（shift_covers_slot）と同じで、無しなら全枠に出る
+  function effectiveShift(d: { shifts: Record<string, CastShift> }, castId: string): CastShift | null {
+    return d.shifts[castId] ?? castById.get(castId)?.shift ?? null
+  }
 
   // これからの日を近い順に、過去の日はその後ろに新しい順で
   const ordered = useMemo(() => {
@@ -183,6 +203,8 @@ export default function ReservationDayAdmin() {
       note: d.note,
       offCastIds: offs,
       blocked: new Set(d.blocks.map((b) => blockKey(b.castId, b.slotNo))),
+      shifts: { ...d.shifts },
+      editingShift: null,
       isNew: false,
     })
     setFormOpen(true)
@@ -198,6 +220,10 @@ export default function ReservationDayAdmin() {
           return { castId, slotNo: Number(slot) }
         })
         .filter((b) => workingIds.includes(b.castId))
+      // お休みの人の「この日だけの時間」は捨てる
+      const shifts = Object.fromEntries(
+        Object.entries(form.shifts).filter(([castId]) => workingIds.includes(castId)),
+      )
 
       await saveReservationDay({
         businessDate: form.businessDate,
@@ -208,6 +234,7 @@ export default function ReservationDayAdmin() {
         note: form.note,
         castIds: workingIds,
         blocks,
+        shifts,
       })
       toast.show(form.isOpen ? '受付日を保存しました。お客様のページに表示されます' : '受付日を保存しました')
       setFormOpen(false)
@@ -253,6 +280,10 @@ export default function ReservationDayAdmin() {
   function renderCard(d: ReservationDay) {
     const st = acceptState(d, now)
     const names = d.castIds.map((id) => castNameById.get(id)).filter(Boolean)
+    // 全枠に出る人（時間帯なし）は書かず、時間の決まっている人だけ並べる
+    const shiftLines = d.castIds
+      .map((id) => ({ id, name: castNameById.get(id), shift: effectiveShift(d, id), override: !!d.shifts[id] }))
+      .filter((x): x is { id: string; name: string; shift: CastShift; override: boolean } => !!x.name && !!x.shift)
     return (
       <div key={d.businessDate} className={`admin-card rday-card${d.isOpen ? '' : ' is-closed'}`}>
         <div className="admin-card-body">
@@ -271,6 +302,18 @@ export default function ReservationDayAdmin() {
               <span className="muted">出勤</span>
               <span>{names.length ? names.join('・') : <span className="err-inline">全員お休み</span>}</span>
             </div>
+            {shiftLines.length > 0 && (
+              <div className="rday-line">
+                <span className="muted">時間</span>
+                <span className="rday-slots">
+                  {shiftLines.map((x) => (
+                    <span key={x.id} className={`rday-slot${x.override ? ' rday-slot-override' : ''}`}>
+                      {x.name} {fmtShift(x.shift)}{x.override && '（この日だけ）'}
+                    </span>
+                  ))}
+                </span>
+              </div>
+            )}
             {d.blocks.length > 0 && (
               <div className="rday-line">
                 <span className="muted">受付なし</span>
@@ -442,6 +485,7 @@ export default function ReservationDayAdmin() {
             <p className="muted small" style={{ marginTop: 0 }}>
               お休みの人は左のチェックを入れてください。出勤する人でも、
               都合の悪い枠はマスを押すと受付を止められます。
+              名前の下の時間を押すと、この日だけ勤務時間帯を変えられます（時間に入らない枠は「時間外」になります）。
             </p>
 
             {!casts.length ? (
@@ -457,34 +501,53 @@ export default function ReservationDayAdmin() {
 
                 {casts.map((c) => {
                   const off = form.offCastIds.includes(c.id)
+                  const override = form.shifts[c.id]
+                  const shift = effectiveShift(form, c.id)          // 枠の判定に使う（無しなら全枠）
+                  const shown = shift ?? businessHours                // 表示に使う
+                  const editing = form.editingShift === c.id
                   return (
                     <div key={c.id} className={`rday-grid-row${off ? ' is-off' : ''}`}>
-                      <label className="rday-grid-name">
-                        <input
-                          type="checkbox"
-                          checked={off}
-                          onChange={(e) => setForm((f) => ({
-                            ...f,
-                            offCastIds: e.target.checked
-                              ? [...f.offCastIds, c.id]
-                              : f.offCastIds.filter((id) => id !== c.id),
-                          }))}
-                        />
-                        <span>{c.name}</span>
-                      </label>
+                      <div className="rday-grid-cast">
+                        <label className="rday-grid-name">
+                          <input
+                            type="checkbox"
+                            checked={off}
+                            onChange={(e) => setForm((f) => ({
+                              ...f,
+                              offCastIds: e.target.checked
+                                ? [...f.offCastIds, c.id]
+                                : f.offCastIds.filter((id) => id !== c.id),
+                              editingShift: e.target.checked && f.editingShift === c.id ? null : f.editingShift,
+                            }))}
+                          />
+                          <span>{c.name}</span>
+                        </label>
+                        {!off && (
+                          <button
+                            type="button"
+                            className={`rday-shift${override ? ' is-override' : ''}${editing ? ' is-editing' : ''}`}
+                            aria-expanded={editing}
+                            aria-label={`${c.name} の勤務時間帯 ${fmtShift(shown)}${override ? '（この日だけ）' : ''}`}
+                            onClick={() => setForm((f) => ({ ...f, editingShift: editing ? null : c.id }))}
+                          >
+                            {fmtShift(shown)}
+                          </button>
+                        )}
+                      </div>
 
-                      {form.slotTimes.map((_, i) => {
+                      {form.slotTimes.map((t, i) => {
                         const slotNo = i + 1
                         const key = blockKey(c.id, slotNo)
                         const blocked = form.blocked.has(key)
+                        const outside = !off && !!t && !shiftCoversSlot(t, shift)
                         return (
                           <button
                             key={i}
                             type="button"
-                            className={`rday-cell${blocked ? ' is-blocked' : ''}`}
-                            disabled={off}
-                            aria-pressed={!blocked && !off}
-                            aria-label={`${c.name} ${form.slotTimes[i]} ${off ? 'お休み' : blocked ? '受付しない' : '受付する'}`}
+                            className={`rday-cell${blocked && !outside ? ' is-blocked' : ''}${outside ? ' is-outside' : ''}`}
+                            disabled={off || outside}
+                            aria-pressed={!blocked && !off && !outside}
+                            aria-label={`${c.name} ${form.slotTimes[i]} ${off ? 'お休み' : outside ? '勤務時間外' : blocked ? '受付しない' : '受付する'}`}
                             onClick={() => setForm((f) => {
                               const next = new Set(f.blocked)
                               if (next.has(key)) next.delete(key)
@@ -492,10 +555,45 @@ export default function ReservationDayAdmin() {
                               return { ...f, blocked: next }
                             })}
                           >
-                            {off ? '—' : blocked ? '受付なし' : '受付'}
+                            {off ? '—' : outside ? '時間外' : blocked ? '受付なし' : '受付'}
                           </button>
                         )
                       })}
+
+                      {editing && !off && (
+                        <div className="rday-shift-editor">
+                          <ShiftSelect
+                            value={override ?? c.shift ?? businessHours}
+                            onChange={(v) => setForm((f) => ({ ...f, shifts: { ...f.shifts, [c.id]: v } }))}
+                            ariaLabel={`${c.name} のこの日の勤務時間帯`}
+                          />
+                          <span className="muted small">
+                            {override ? 'この日だけの時間です。' : `いつもの時間（${fmtShift(c.shift ?? businessHours)}）です。変えるとこの日だけに効きます。`}
+                          </span>
+                          <span className="rday-shift-editor-actions">
+                            {override && (
+                              <button
+                                type="button"
+                                className="btn-secondary"
+                                onClick={() => setForm((f) => {
+                                  const next = { ...f.shifts }
+                                  delete next[c.id]
+                                  return { ...f, shifts: next }
+                                })}
+                              >
+                                いつもの時間に戻す
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              className="btn-secondary"
+                              onClick={() => setForm((f) => ({ ...f, editingShift: null }))}
+                            >
+                              閉じる
+                            </button>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   )
                 })}

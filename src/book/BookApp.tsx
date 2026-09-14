@@ -35,21 +35,15 @@ const WEEKDAYS = ['日', '月', '火', '水', '木', '金', '土']
 // お客様が選べるお時間。料金表が30分単位なので、その倍数で並べる
 const DURATIONS = [30, 60] as const
 
-// 枠の開始を「その日の何分目」で数える。4時前は翌日扱いで 24:xx（DB の slot_start_at と同じ区切り）
-function slotMinutes(slotTime: string): number {
-  const [hh, mm] = slotTime.split(':').map(Number)
-  return (hh < 4 ? hh + 24 : hh) * 60 + mm
-}
-
-// その枠で選べるお時間。開始 +60分 が 24:00 を超える枠（既定の 23:20）は 30分だけ。
-// 店の「24時をまたぐ予約は受けない」に合わせたもので、DB 側 (slot_allows_duration) と同じ判定
-function allowedDurations(slotTime: string): number[] {
-  return DURATIONS.filter((d) => d <= 30 || slotMinutes(slotTime) + d <= 24 * 60)
+// その枠で選べるお時間。上限は店側（get_public_slots の max_duration_min）が決める。
+// 開始 +60分 が 24:00 を超える枠（既定の 23:20）と、キャストの勤務の終わりをまたぐ枠は 30分だけ
+function allowedDurations(slot: PublicSlot): number[] {
+  return DURATIONS.filter((d) => d <= Math.max(30, slot.maxDurationMin || 60))
 }
 
 // その枠で選べるいちばん長いお時間
-function slotMaxDuration(slotTime: string): number {
-  const list = allowedDurations(slotTime)
+function slotMaxDuration(slot: PublicSlot): number {
+  const list = allowedDurations(slot)
   return list[list.length - 1]
 }
 
@@ -123,6 +117,7 @@ const STATE_LABEL: Record<PublicSlot['state'], string> = {
   pending: '申込中',
   confirmed: '満席',
   closed: '—',
+  off: '時間外',
 }
 
 // ============================================================
@@ -262,7 +257,7 @@ function SlotPicker() {
   }, [])
 
   // 開いている枠で選べるお時間と、その中での実際の長さ
-  const allowed = picked ? allowedDurations(picked.slot.slotTime) : [...DURATIONS]
+  const allowed = picked ? allowedDurations(picked.slot) : [...DURATIONS]
   const durationMin = allowed.includes(chosenDur) ? chosenDur : allowed[allowed.length - 1]
   const only30 = allowed.length === 1
 
@@ -552,7 +547,7 @@ function SlotPicker() {
                   </div>
                   {only30 && (
                     <p className="bk-field-hint">
-                      この枠は24時までのため、30分のみお選びいただけます。
+                      この枠は終わりの時刻の都合で、30分のみお選びいただけます。
                     </p>
                   )}
                 </div>
@@ -699,9 +694,11 @@ function CastSlots({
         >
           <span className="bk-row-cast">{cast.castName}</span>
           {cast.slots.map((slot, col) => {
-            const maxDur = slotMaxDuration(slot.slotTime)
-            // 24時をまたぐ枠は30分だけ。60分のご予約はここへ移せない
+            const maxDur = slotMaxDuration(slot)
+            // 24時（またはキャストの勤務の終わり）をまたぐ枠は30分だけ。60分のご予約はここへ移せない
             const only30 = maxDur < 60
+            // 「30分のみ」の但し書きは押せる見込みのある枠にだけ付ける（時間外・満席には要らない）
+            const noteOnly30 = only30 && slot.state !== 'confirmed' && slot.state !== 'off'
             const tooLong = needDuration !== undefined && maxDur < Math.max(30, needDuration || 60)
             const canBook = day.isAccepting && slot.state === 'open' && !tooLong
             // 受付開始前は空き状況を伏せる。金色で「空き」と出すと押せそうに見えて、
@@ -720,7 +717,7 @@ function CastSlots({
                 // どのキャストの枠か分からなくなる。ここで補う
                 aria-label={
                   day.isAccepting
-                    ? `${cast.castName} ${slotRange(slot.slotTime, maxDur)} ${STATE_LABEL[shown]}${only30 ? ' 30分のみ' : ''}`
+                    ? `${cast.castName} ${slotRange(slot.slotTime, maxDur)} ${STATE_LABEL[shown]}${noteOnly30 ? ' 30分のみ' : ''}`
                     : `${cast.castName} ${slotRange(slot.slotTime, maxDur)} 受付開始前`
                 }
                 onClick={() => onPick(cast.castId, cast.castName, slot)}
@@ -729,7 +726,7 @@ function CastSlots({
                 {day.isAccepting && (
                   <span className="bk-cell-state">{STATE_LABEL[shown]}</span>
                 )}
-                {only30 && slot.state !== 'confirmed' && (
+                {noteOnly30 && (
                   <span className="bk-cell-note">30分のみ</span>
                 )}
               </button>
@@ -843,7 +840,7 @@ function MyReservations() {
     if (!changing) return
     // 長さは今のご予約のまま移すので、60分が収まらない枠（23:20 など）へは移せない。
     // マス目側で押せなくしてあるが、念のためここでも止める
-    if (slotMaxDuration(slot.slotTime) < Math.max(30, changing.durationMin || 60)) {
+    if (slotMaxDuration(slot) < Math.max(30, changing.durationMin || 60)) {
       setChangeErr('その枠は30分のみのため、このご予約は移せません。取り消して30分で申し込み直してください')
       return
     }

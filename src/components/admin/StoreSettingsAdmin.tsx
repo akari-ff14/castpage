@@ -4,13 +4,16 @@ import {
   getPublicNotice,
   getRecruitTemplate,
   getReservationTimeStep,
+  getShiftRules,
   hasDiscordWebhook,
   setDiscordWebhook,
   setGuideMacro,
   setPublicNotice,
   setRecruitTemplate,
   setReservationTimeStep,
+  setShiftRules,
   type DiscordTarget,
+  type ShiftRules,
   DEFAULT_GUIDE_MACRO,
   DEFAULT_RECRUIT_TEMPLATE,
   MACRO_NORMAL_TOKEN,
@@ -20,6 +23,9 @@ import {
   RECRUIT_ATTRS_TOKEN,
   RECRUIT_SHORTEST_TOKEN,
 } from '../../lib/db'
+import { fmtGil } from '../../lib/format'
+import { fmtHours, fmtShift, shiftHours, type GuaranteeRule } from '../../lib/shift'
+import ShiftSelect from '../ShiftSelect'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
 
@@ -151,12 +157,151 @@ export default function StoreSettingsAdmin() {
         </div>
       </div>
 
+      <ShiftRulesCard />
+
       <RecruitTemplateCard />
 
       <GuideMacroCard />
 
       <DiscordCard />
 
+      {toast.element}
+    </div>
+  )
+}
+
+// 営業時間と、勤務時間から決まる待機保証の規定表。
+// 「3時間なら50万、2時間なら20万」をここで持ち、管理→キャストで勤務時間帯を
+// 入れたときの既定額と、受付日でその日だけ時間を変えた日の給与計算に使う
+function ShiftRulesCard() {
+  const [rules, setRules] = useState<ShiftRules | null>(null)
+  const [saved, setSaved] = useState<ShiftRules | null>(null)
+  const [busy, setBusy] = useState(false)
+  const toast = useToast()
+
+  useEffect(() => {
+    getShiftRules()
+      .then((r) => {
+        setRules(r)
+        setSaved(r)
+      })
+      .catch(() => {})
+  }, [])
+
+  if (!rules || !saved) return null
+
+  const dirty = JSON.stringify(rules) !== JSON.stringify(saved)
+  const hours = shiftHours(rules.businessHours)
+
+  function updateRule(i: number, patch: Partial<GuaranteeRule>) {
+    setRules((r) => r && {
+      ...r,
+      guaranteeRules: r.guaranteeRules.map((row, j) => (j === i ? { ...row, ...patch } : row)),
+    })
+  }
+
+  async function save() {
+    if (!rules) return
+    setBusy(true)
+    try {
+      // 時間の長い順に揃えてから保存する。画面もこの順で読む
+      const next: ShiftRules = {
+        businessHours: rules.businessHours,
+        guaranteeRules: rules.guaranteeRules
+          .filter((r) => r.hours > 0)
+          .sort((a, b) => b.hours - a.hours),
+      }
+      await setShiftRules(next)
+      setRules(next)
+      setSaved(next)
+      toast.show('営業時間と待機保証の規定を保存しました')
+    } catch (e) {
+      toast.show((e as Error).message, 'err')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="form-group">
+        <span className="form-label">営業時間</span>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          勤務時間帯を決めていないキャストは、この時間に出るものとして扱います
+          （受付ボードの「出勤前」「本日終了」と、待機保証の時間数に使います）。
+        </p>
+        <ShiftSelect
+          value={rules.businessHours}
+          onChange={(v) => setRules((r) => r && { ...r, businessHours: v })}
+          ariaLabel="営業時間"
+        />
+        <p className="muted small" style={{ margin: '6px 2px 0' }}>
+          {fmtShift(rules.businessHours)}（{fmtHours(hours)}）
+          {hours <= 0 && <span className="err"> 終わりは始まりより後にしてください</span>}
+        </p>
+      </div>
+
+      <div className="form-group">
+        <span className="form-label">待機保証の規定（勤務時間 → 金額）</span>
+        <p className="muted small" style={{ marginTop: 0 }}>
+          勤務時間がその行の時間以上なら、その行の額になります（3時間50万・2時間20万なら、2時間半の人は20万）。
+          どの行にも届かない短さは保証なしです。
+        </p>
+        <div className="rule-table">
+          {rules.guaranteeRules.map((row, i) => (
+            <div key={i} className="rule-row">
+              <input
+                type="number"
+                className="form-input"
+                min="0.5"
+                step="0.5"
+                value={row.hours}
+                aria-label={`規定 ${i + 1} の勤務時間`}
+                onChange={(e) => updateRule(i, { hours: Math.max(0, Number(e.target.value) || 0) })}
+              />
+              <span className="muted">時間 →</span>
+              <input
+                type="number"
+                className="form-input"
+                min="0"
+                step="10000"
+                value={row.amount}
+                aria-label={`規定 ${i + 1} の金額`}
+                onChange={(e) => updateRule(i, { amount: Math.max(0, Number(e.target.value) || 0) })}
+              />
+              <span className="muted rule-gil">{fmtGil(row.amount)}</span>
+              <button
+                type="button"
+                className="btn-secondary rule-del"
+                disabled={rules.guaranteeRules.length <= 1}
+                aria-label={`規定 ${i + 1} を削除`}
+                onClick={() => setRules((r) => r && { ...r, guaranteeRules: r.guaranteeRules.filter((_, j) => j !== i) })}
+              >
+                −
+              </button>
+            </div>
+          ))}
+        </div>
+        <button
+          type="button"
+          className="btn-secondary"
+          style={{ marginTop: 8 }}
+          onClick={() => setRules((r) => r && { ...r, guaranteeRules: [...r.guaranteeRules, { hours: 1, amount: 0 }] })}
+        >
+          ＋ 行を足す
+        </button>
+      </div>
+
+      <div className="store-notice-actions">
+        <button className="btn-primary" onClick={save} disabled={busy || !dirty || hours <= 0}>
+          {busy ? '保存中...' : dirty ? '規定を保存' : '保存済み'}
+        </button>
+        {dirty && (
+          <button className="btn-secondary" onClick={() => setRules(saved)} disabled={busy}>
+            元に戻す
+          </button>
+        )}
+      </div>
       {toast.element}
     </div>
   )

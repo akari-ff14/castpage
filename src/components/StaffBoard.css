@@ -98,6 +98,12 @@
   border-left-color: var(--gold);
 }
 
+/* 勤務が終わった人。今日はもう受けないので、色を落として下に並ぶ */
+.board-card.done {
+  border-left-color: var(--border2);
+  opacity: 0.72;
+}
+
 .board-card-head {
   display: flex;
   align-items: center;
@@ -125,9 +131,15 @@
   color: var(--gold);
 }
 
-.board-reason {
+.board-state-done {
+  color: var(--text-dim);
+}
+
+/* 勤務時間帯と、今受けられない理由 */
+.board-shift {
   font-size: var(--fs-xs);
   margin-top: -2px;
+  font-variant-numeric: tabular-nums;
 }
 
 .board-active {

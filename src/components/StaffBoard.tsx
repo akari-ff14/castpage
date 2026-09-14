@@ -7,7 +7,7 @@
 //   ・その人に今どのお客様の予約が付いているか
 //
 // 空き時刻の数え方は予約タブ（ReservationTab の castAvailability）と同じで、
-// そこに受付日で止めた枠＝休憩を足している。
+// そこに受付日で止めた枠＝休憩と、キャストの勤務時間帯（出勤前・本日終了）を足している。
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
@@ -16,6 +16,7 @@ import {
   getGuideMacro,
   getRecruitTemplate,
   getReservationDays,
+  getShiftRules,
   listCastRoster,
   renderGuideMacro,
   saveDailyNote,
@@ -25,6 +26,7 @@ import {
   DEFAULT_SLOT_TIMES,
   RECRUIT_ATTRS_TOKEN,
   RECRUIT_SHORTEST_TOKEN,
+  type CastRosterRow,
   type CustomerSummary,
   type MacroTarget,
   type DailyNote,
@@ -34,6 +36,7 @@ import {
 } from '../lib/db'
 import { useActiveSessions, useRealtimeReservations } from '../lib/useRealtimeSessions'
 import { fmtBizTime, fmtDate, fmtGil, jstBusinessDate } from '../lib/format'
+import { DEFAULT_BUSINESS_HOURS, fmtShift, type CastShift } from '../lib/shift'
 import { Clock, Calendar, RefreshCw, AlertTriangle, Check, Play, Search, Home as HomeIcon, Crown, Edit } from '../icons'
 import Modal from './Modal'
 import { useToast } from './Toast'
@@ -65,6 +68,9 @@ interface BoardRow {
   castId: string
   cast: string
   attribute: string
+  shift: CastShift          // 今日の勤務時間帯（その日だけの上書き → 既定 → 営業時間）
+  shiftEndMs: number
+  ended: boolean            // 勤務が終わっていて、今日はもう受けられない
   availMs: number
   busyNow: boolean
   blockedBy: string
@@ -90,7 +96,9 @@ function bizDateLabel(businessDate: string): string {
 export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) => void }) {
   const [reservations, setReservations] = useState<ReservationShape[]>([])
   const [day, setDay] = useState<ReservationDay | null>(null)
-  const [roster, setRoster] = useState<Array<{ id: string; name: string; role: string; attribute: string }>>([])
+  const [roster, setRoster] = useState<CastRosterRow[]>([])
+  // 勤務時間帯を決めていないキャストは店の営業時間で働くものとして扱う
+  const [businessHours, setBusinessHours] = useState<CastShift>(DEFAULT_BUSINESS_HOURS)
   const [template, setTemplate] = useState(DEFAULT_RECRUIT_TEMPLATE)
   const [rooms, setRooms] = useState<RoomInfo[]>([])
   const [macro, setMacro] = useState(DEFAULT_GUIDE_MACRO)
@@ -114,20 +122,22 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
   const load = useCallback(async () => {
     setErr('')
     const bd = jstBusinessDate()
-    const [resList, days, castList, tpl, roomRes, dayNote, macroTpl, priceRes] = await Promise.all([
+    const [resList, days, castList, tpl, roomRes, dayNote, macroTpl, priceRes, rules] = await Promise.all([
       db.call<ReservationShape[]>('getReservations'),
       getReservationDays(bd, bd).catch(() => [] as ReservationDay[]),
-      listCastRoster().catch(() => []),
+      listCastRoster().catch(() => [] as CastRosterRow[]),
       getRecruitTemplate().catch(() => DEFAULT_RECRUIT_TEMPLATE),
       db.call<{ roomsData: Array<{ name: string; vip: number }> }>('getCastsAndRooms'),
       getDailyNote(bd).catch(() => ({ body: '', updatedByName: '', updatedAt: null })),
       getGuideMacro().catch(() => DEFAULT_GUIDE_MACRO),
       db.call<Array<{ key: string; price: number }>>('getPricing'),
+      getShiftRules().catch(() => null),
     ])
     if (resList.ok) setReservations(resList.data || [])
     else setErr(resList.error)
     setDay(days[0] ?? null)
     setRoster(castList)
+    if (rules) setBusinessHours(rules.businessHours)
     setTemplate(tpl)
     if (roomRes.ok) {
       setRooms((roomRes.data.roomsData || []).map((r) => ({ name: r.name, vip: r.vip === 1 })))
@@ -191,6 +201,14 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
       .map((c) => {
         const blocks: Array<{ start: number; end: number; label: string }> = []
 
+        // 今日の勤務時間帯。出勤前は受けられない（勤務の終わりは最後に見る）
+        const shift = day?.shifts[c.id] ?? c.shift ?? businessHours
+        const shiftStartMs = slotStartMs(businessDate, shift.from)
+        const shiftEndMs = slotStartMs(businessDate, shift.until)
+        if (!isNaN(shiftStartMs) && shiftStartMs > now) {
+          blocks.push({ start: 0, end: shiftStartMs, label: '出勤前' })
+        }
+
         // 対応中は、終わる予定＋片付けまで塞がっている
         const active = activeSessions.find((s) => s.対応者 === c.name) ?? null
         if (active) {
@@ -246,10 +264,16 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
           }
         }
 
+        // 次に受けられる時刻が勤務の終わりを過ぎていたら、今日はもう受けられない
+        const ended = !isNaN(shiftEndMs) && availMs >= shiftEndMs
+
         return {
           castId: c.id,
           cast: c.name,
           attribute: c.attribute,
+          shift,
+          shiftEndMs,
+          ended,
           availMs,
           busyNow: availMs > now,
           blockedBy,
@@ -258,22 +282,28 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
           breaks,
         }
       })
-      .sort((a, b) => a.availMs - b.availMs || a.cast.localeCompare(b.cast, 'ja'))
-  }, [castsOnDuty, activeSessions, todayReservations, day, businessDate, tick])
+      .sort(
+        (a, b) =>
+          Number(a.ended) - Number(b.ended) ||
+          a.availMs - b.availMs ||
+          a.cast.localeCompare(b.cast, 'ja'),
+      )
+  }, [castsOnDuty, activeSessions, todayReservations, day, businessDate, businessHours, tick])
 
-  const freeNow = rows.filter((r) => !r.busyNow).length
+  const freeNow = rows.filter((r) => !r.busyNow && !r.ended).length
   const pendingCount = todayReservations.filter((r) => r.status === 'pending').length
 
   // PT募集に貼る文面。誰か空いていれば「即ご案内可能」、
-  // 全員埋まっていれば一番早く空く時刻を入れる
+  // 全員埋まっていれば一番早く空く時刻を入れる。勤務の終わった人は数に入れない
   const recruit = useMemo(() => {
     if (!rows.length) return null
-    const soonest = rows[0]
-    const shortest = soonest.busyNow ? `${fmtBizTime(soonest.availMs)}～` : '即ご案内可能'
+    const working = rows.filter((r) => !r.ended)
+    const soonest = working[0]
+    const shortest = !soonest ? '受付終了' : soonest.busyNow ? `${fmtBizTime(soonest.availMs)}～` : '即ご案内可能'
     // 属性は在店している人ぶんを名前順で。同じ属性はひとつにまとめる
     const attrs = [
       ...new Set(
-        [...rows]
+        [...working]
           .sort((a, b) => a.cast.localeCompare(b.cast, 'ja'))
           .map((r) => r.attribute.trim())
           .filter(Boolean),
@@ -315,6 +345,7 @@ export default function StaffBoard({ onNavigate }: { onNavigate: (id: RouteId) =
         note: '',
         castIds: roster.filter((c) => c.role === 'cast').map((c) => c.id),
         blocks: [],
+        shifts: {},
       })
       toast.show('今日の出勤表を作りました。お休みの人は各カードから外せます')
       await load()
@@ -945,13 +976,15 @@ function CastCard({
   onRest: () => void
 }) {
   return (
-    <div className={`board-card ${row.busyNow ? 'busy' : 'free'}`}>
+    <div className={`board-card ${row.ended ? 'done' : row.busyNow ? 'busy' : 'free'}`}>
       <div className="board-card-head">
         <strong className="board-cast">
           {row.cast}
           {row.attribute && <span className="board-attr muted">{row.attribute}</span>}
         </strong>
-        {row.busyNow ? (
+        {row.ended ? (
+          <span className="board-state board-state-done">本日終了</span>
+        ) : row.busyNow ? (
           <span className="board-state board-state-busy">
             <Clock size={13} style={{ verticalAlign: '-2px', marginRight: 4 }} />
             {fmtBizTime(row.availMs)} 〜 受付可能
@@ -961,9 +994,11 @@ function CastCard({
         )}
       </div>
 
-      {row.busyNow && row.blockedBy && (
-        <div className="board-reason muted small">{row.blockedBy} のため</div>
-      )}
+      {/* 何時から何時まで受けられる人か。短く入る人がいる日に、受付が一目で分かるように */}
+      <div className="board-shift muted small">
+        勤務 {fmtShift(row.shift)}
+        {row.busyNow && !row.ended && row.blockedBy && ` ／ ${row.blockedBy} のため`}
+      </div>
 
       {row.active && (
         <div className="board-active">

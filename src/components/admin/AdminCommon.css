@@ -323,3 +323,33 @@
   resize: vertical;
   line-height: 1.7;
 }
+
+/* 待機保証の規定表（勤務時間 → 金額）。1行 = 1規定 */
+.rule-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.rule-row {
+  display: grid;
+  grid-template-columns: 5.5em auto 1fr auto 2.4em;
+  gap: var(--space-2);
+  align-items: center;
+}
+
+.rule-row .form-input {
+  font-variant-numeric: tabular-nums;
+  padding-left: 8px;
+  padding-right: 8px;
+}
+
+.rule-gil {
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+}
+
+.rule-del {
+  width: 2.4em;
+  padding: 0;
+}

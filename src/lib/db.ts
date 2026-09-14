@@ -7,6 +7,16 @@
 
 import { supabase } from './supabase'
 import { fmtBizTime, fmtDate, fmtGil } from './format'
+import {
+  DEFAULT_BUSINESS_HOURS,
+  DEFAULT_GUARANTEE_RULES,
+  guaranteeForHours,
+  isValidShift,
+  shiftFromRow,
+  shiftHours,
+  type CastShift,
+  type GuaranteeRule,
+} from './shift'
 
 // ============================================================
 // 型定義（旧 AkariApi の戻り値と互換）
@@ -176,18 +186,28 @@ interface SessionRow {
 // cast = 接客するキャスト / staff = 接客せず予約受付などの運営を回すスタッフ
 export type CastRole = 'cast' | 'staff'
 
-let _castsCache: Array<{ id: string; name: string; guarantee_amount: number; role: CastRole; attribute: string }> | null = null
+// shift は既定の勤務時間帯。null なら店の営業時間どおり（受付日の全枠に出る）
+interface CastMaster {
+  id: string
+  name: string
+  guarantee_amount: number
+  role: CastRole
+  attribute: string
+  shift: CastShift | null
+}
+
+let _castsCache: CastMaster[] | null = null
 let _roomsCache: Array<{ id: string; name: string; vip: boolean }> | null = null
 let _pricingCache: Map<string, PricingEntry> | null = null
 
 // キャッシュにはスタッフも含める（名前⇔id の解決に要る）。
 // 「誰を接客担当として選べるか」の絞り込みは getCastsAndRooms 側で行う
-async function loadCasts() {
+async function loadCasts(): Promise<CastMaster[]> {
   if (_castsCache) return _castsCache
   // casts_public ビュー経由 (invite_code を除外、RLS バイパスして全 authenticated に露出)
   const { data, error } = await supabase
     .from('casts_public')
-    .select('id, name, guarantee_amount, role, attribute')
+    .select('id, name, guarantee_amount, role, attribute, shift_from, shift_until')
     .eq('active', true)
     .order('name')
   if (error) throw error
@@ -197,6 +217,7 @@ async function loadCasts() {
     guarantee_amount: Number(c.guarantee_amount) || 0,
     role: (c.role === 'staff' ? 'staff' : 'cast') as CastRole,
     attribute: c.attribute || '',
+    shift: shiftFromRow(c.shift_from, c.shift_until),
   }))
   return _castsCache
 }
@@ -319,9 +340,17 @@ export async function getActiveSession(castName: string): Promise<SessionShape |
 // id つきのキャスト名簿。受付日の castIds を名前に直すのに要る。
 // listAllCasts は casts テーブル直読みで管理者権限が前提だが、こちらは
 // casts_public 経由なので紐付け済なら誰でも読める
-export async function listCastRoster(): Promise<Array<{ id: string; name: string; role: CastRole; attribute: string }>> {
+export interface CastRosterRow {
+  id: string
+  name: string
+  role: CastRole
+  attribute: string
+  shift: CastShift | null   // 既定の勤務時間帯。null は店の営業時間どおり
+}
+
+export async function listCastRoster(): Promise<CastRosterRow[]> {
   const casts = await loadCasts()
-  return casts.map((c) => ({ id: c.id, name: c.name, role: c.role, attribute: c.attribute }))
+  return casts.map((c) => ({ id: c.id, name: c.name, role: c.role, attribute: c.attribute, shift: c.shift }))
 }
 
 // 接客担当として選べる人の一覧。スタッフは接客をしないので出さない
@@ -909,6 +938,7 @@ export interface ReservationDay {
   note: string                // お客様側に表示するひとこと
   castIds: string[]           // この日に出るキャスト（ここに無い人はお休み）
   blocks: SlotBlock[]         // 出るけれど都合が悪い枠
+  shifts: Record<string, CastShift>  // castId → その日だけの勤務時間帯（無い人はキャストの既定）
 }
 
 // 「このキャストのこの枠だけ受付を止める」1マス分
@@ -931,7 +961,7 @@ export async function getReservationDays(fromDate: string, toDate: string): Prom
       .order('business_date', { ascending: false }),
     supabase
       .from('reservation_day_casts')
-      .select('business_date, cast_id')
+      .select('business_date, cast_id, shift_from, shift_until')
       .gte('business_date', fromDate)
       .lte('business_date', toDate),
     supabase
@@ -945,10 +975,17 @@ export async function getReservationDays(fromDate: string, toDate: string): Prom
   if (blocksRes.error) throw blocksRes.error
 
   const castsByDate = new Map<string, string[]>()
+  const shiftsByDate = new Map<string, Record<string, CastShift>>()
   for (const row of castsRes.data || []) {
     const arr = castsByDate.get(row.business_date) || []
     arr.push(row.cast_id)
     castsByDate.set(row.business_date, arr)
+    const shift = shiftFromRow(row.shift_from, row.shift_until)
+    if (shift) {
+      const m = shiftsByDate.get(row.business_date) || {}
+      m[row.cast_id] = shift
+      shiftsByDate.set(row.business_date, m)
+    }
   }
 
   const blocksByDate = new Map<string, SlotBlock[]>()
@@ -969,6 +1006,7 @@ export async function getReservationDays(fromDate: string, toDate: string): Prom
     note: d.note || '',
     castIds: castsByDate.get(d.business_date) || [],
     blocks: blocksByDate.get(d.business_date) || [],
+    shifts: shiftsByDate.get(d.business_date) || {},
   }))
 }
 
@@ -1002,6 +1040,13 @@ export async function saveReservationDay(payload: ReservationDay): Promise<void>
   // 出勤キャストと止めた枠は差分を取らず総入れ替え。1日あたり数行なので単純さを取る
   const ids = Array.from(new Set(payload.castIds || []))
 
+  // その日だけの勤務時間帯。形が崩れているものは持ち込まない（DB の CHECK で落ちる前に弾く）
+  const shifts = payload.shifts || {}
+  for (const id of ids) {
+    const s = shifts[id]
+    if (s && !isValidShift(s)) throw new Error('勤務時間帯は、終わりが始まりより後になるようにしてください')
+  }
+
   const { error: delErr } = await supabase
     .from('reservation_day_casts')
     .delete()
@@ -1011,7 +1056,12 @@ export async function saveReservationDay(payload: ReservationDay): Promise<void>
   if (ids.length) {
     const { error: insErr } = await supabase
       .from('reservation_day_casts')
-      .insert(ids.map((cast_id) => ({ business_date: date, cast_id })))
+      .insert(ids.map((cast_id) => ({
+        business_date: date,
+        cast_id,
+        shift_from: shifts[cast_id]?.from ?? null,
+        shift_until: shifts[cast_id]?.until ?? null,
+      })))
     if (insErr) throw insErr
   }
 
@@ -1298,11 +1348,18 @@ function getBusinessDayLabel(busStart: Date): string {
 // 待機保証はキャストごとの設定 (casts.guarantee_amount、既定0)。
 // その営業日に1件でも記録があるキャストにのみ加算する（給与 = 待機保証 + 席料50% + オプション全額）
 export async function getRevenueStatus(params?: { businessDay?: string }): Promise<RevenueStatus> {
-  const [pricing, castNames] = await Promise.all([loadPricing(), loadCastNames()])
-  const castsMaster = await loadCasts()
-  const guaranteeByName = new Map(castsMaster.map((c) => [c.name, c.guarantee_amount]))
+  const [pricing, castNames, castsMaster, rules] = await Promise.all([
+    loadPricing(),
+    loadCastNames(),
+    loadCasts(),
+    getShiftRules(),
+  ])
+  const castByName = new Map(castsMaster.map((c) => [c.name, c]))
   const busStart = getBusinessDayStart(params?.businessDay)
   const busEnd = new Date(busStart.getTime() + 24 * 60 * 60 * 1000)
+  // 営業日の 'YYYY-MM-DD'（busStart は JST 4:00）。その日だけの勤務時間帯を引くのに使う
+  const bizDateStr = new Date(busStart.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const dayShifts = await loadDayShifts(bizDateStr, bizDateStr)
   // 営業日の判定は started_at（接客した日時）基準。
   // created_at 基準だと、後から手入力した過去分が「入力した日」に計上されてしまう
   const { data, error } = await supabase
@@ -1342,7 +1399,10 @@ export async function getRevenueStatus(params?: { businessDay?: string }): Promi
   }
 
   const casts: CastRevenue[] = [...castMap.entries()].map(([name, d]) => {
-    const guarantee = guaranteeByName.get(name) ?? 0
+    const master = castByName.get(name)
+    const guarantee = master
+      ? guaranteeForDay(master, dayShifts.get(`${bizDateStr}|${master.id}`), rules)
+      : 0
     const revenue = d.baseTotal + d.optTotal
     const salary = guarantee + d.baseTotal * 0.5 + d.optTotal
     return {
@@ -1647,14 +1707,19 @@ function bizDateOfIso(iso: string): string {
 }
 
 export async function getInsights(): Promise<InsightsData> {
-  const pricing = await loadPricing()
-  const castsMaster = await loadCasts()
-  const guaranteeByName = new Map(castsMaster.map((c) => [c.name, c.guarantee_amount]))
+  const [pricing, castsMaster, rules, dayShifts] = await Promise.all([
+    loadPricing(),
+    loadCasts(),
+    getShiftRules(),
+    // その日だけ勤務時間帯を変えた日は待機保証が変わる。件数は少ないので期間で絞らず全部
+    loadDayShifts(),
+  ])
+  const castById = new Map(castsMaster.map((c) => [c.id, c]))
 
   // 完了済セッションを取得
   const { data, error } = await supabase
     .from('sessions')
-    .select('service_type, base_price, option_price, extend_count, option_count, customer_count, revenue, started_at, created_at, room:rooms(name), cast:casts(name), customer_names')
+    .select('cast_id, service_type, base_price, option_price, extend_count, option_count, customer_count, revenue, started_at, created_at, room:rooms(name), cast:casts(name), customer_names')
     .eq('finished', true)
     .order('created_at', { ascending: false })
     .limit(2000)
@@ -1691,12 +1756,13 @@ export async function getInsights(): Promise<InsightsData> {
     const baseTotal = base * numCust * (1 + ext)
     const optTotal = optPrice * optCnt
     let guarantee = 0
-    const castName = (r.cast as { name?: string } | null)?.name || ''
-    if (castName) {
-      const gKey = `${castName}|${bizDateOfIso(r.started_at)}`
+    const master = castById.get(r.cast_id)
+    if (master) {
+      const bizDate = bizDateOfIso(r.started_at)
+      const gKey = `${bizDate}|${master.id}`
       if (!guaranteeSeen.has(gKey)) {
         guaranteeSeen.add(gKey)
-        guarantee = guaranteeByName.get(castName) ?? 0
+        guarantee = guaranteeForDay(master, dayShifts.get(gKey), rules)
       }
     }
     const salary = guarantee + baseTotal * 0.5 + optTotal
@@ -1811,12 +1877,13 @@ export interface CastAdminRow {
   guarantee_amount: number    // 待機保証額（0 = なし）
   role: CastRole              // staff は接客をしない（選択肢・売上集計から外れる）
   attribute: string           // FF14 の種族・性別の呼び方。募集文の列挙に使う
+  shift: CastShift | null     // 既定の勤務時間帯。null は店の営業時間どおり（全枠に出る）
 }
 
 export async function listAllCasts(): Promise<CastAdminRow[]> {
   const { data, error } = await supabase
     .from('casts')
-    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount, role, attribute')
+    .select('id, name, user_id, is_admin, active, note, invite_code, guarantee_amount, role, attribute, shift_from, shift_until')
     .order('active', { ascending: false })
     .order('name')
   if (error) throw error
@@ -1833,11 +1900,32 @@ export async function listAllCasts(): Promise<CastAdminRow[]> {
     guarantee_amount: Number(c.guarantee_amount) || 0,
     role: c.role === 'staff' ? 'staff' : 'cast',
     attribute: c.attribute || '',
+    shift: shiftFromRow(c.shift_from, c.shift_until),
   }))
 }
 
+// 画面の shift（null = 営業時間どおり）を DB の2列に直す
+function shiftColumns(shift: CastShift | null | undefined): { shift_from: string | null; shift_until: string | null } {
+  if (shift && !isValidShift(shift)) {
+    throw new Error('勤務時間帯は、終わりが始まりより後になるようにしてください')
+  }
+  return { shift_from: shift?.from ?? null, shift_until: shift?.until ?? null }
+}
+
+interface CastFields {
+  name: string
+  is_admin: boolean
+  active: boolean
+  note: string
+  user_id: string | null
+  guarantee_amount: number
+  role: CastRole
+  attribute: string
+  shift: CastShift | null
+}
+
 // スタッフは待機保証を持たず、管理権限は DB のトリガで必ず true になる
-export async function addCast(payload: { name: string; is_admin?: boolean; active?: boolean; note?: string; guarantee_amount?: number; role?: CastRole; attribute?: string }): Promise<void> {
+export async function addCast(payload: Partial<CastFields> & { name: string }): Promise<void> {
   const role: CastRole = payload.role === 'staff' ? 'staff' : 'cast'
   const { error } = await supabase.from('casts').insert({
     name: payload.name,
@@ -1847,13 +1935,17 @@ export async function addCast(payload: { name: string; is_admin?: boolean; activ
     guarantee_amount: role === 'staff' ? 0 : Math.max(0, Number(payload.guarantee_amount) || 0),
     role,
     attribute: (payload.attribute || '').trim(),
+    ...shiftColumns(role === 'staff' ? null : payload.shift),
   })
   if (error) throw error
   invalidateCaches()
 }
 
-export async function updateCast(id: string, fields: Partial<{ name: string; is_admin: boolean; active: boolean; note: string; user_id: string | null; guarantee_amount: number; role: CastRole; attribute: string }>): Promise<void> {
-  const { error } = await supabase.from('casts').update(fields).eq('id', id)
+export async function updateCast(id: string, fields: Partial<CastFields>): Promise<void> {
+  const { shift, ...rest } = fields
+  const row: Record<string, unknown> = { ...rest }
+  if ('shift' in fields) Object.assign(row, shiftColumns(shift))
+  const { error } = await supabase.from('casts').update(row).eq('id', id)
   if (error) throw error
   invalidateCaches()
 }
@@ -2308,6 +2400,90 @@ export async function setGuideMacro(text: string): Promise<void> {
       { onConflict: 'key' },
     )
   if (error) throw error
+}
+
+// 店の営業時間と、勤務時間から決まる待機保証の規定表。
+//   営業時間     … 勤務時間帯を決めていないキャストの働く時間。受付ボードの
+//                 「出勤前」「本日終了」と、待機保証の時間数に使う
+//   待機保証規定 … 3時間なら50万・2時間なら20万、のような表。管理→キャストで
+//                 勤務時間帯を入れたときの既定額と、日ごとに時間を変えた日の給与計算に使う
+export const BUSINESS_HOURS_KEY = 'business_hours'
+export const GUARANTEE_RULES_KEY = 'guarantee_rules'
+
+export interface ShiftRules {
+  businessHours: CastShift
+  guaranteeRules: GuaranteeRule[]
+}
+
+function parseGuaranteeRules(v: unknown): GuaranteeRule[] | null {
+  if (!Array.isArray(v)) return null
+  const rules = v
+    .map((r) => ({ hours: Number((r as GuaranteeRule)?.hours), amount: Number((r as GuaranteeRule)?.amount) }))
+    .filter((r) => Number.isFinite(r.hours) && r.hours > 0 && Number.isFinite(r.amount) && r.amount >= 0)
+  return rules.length ? rules : null
+}
+
+export async function getShiftRules(): Promise<ShiftRules> {
+  const { data, error } = await supabase
+    .from('store_settings')
+    .select('key, value')
+    .in('key', [BUSINESS_HOURS_KEY, GUARANTEE_RULES_KEY])
+  if (error) throw error
+  const byKey = new Map((data || []).map((r) => [r.key, r.value as unknown]))
+  const hours = byKey.get(BUSINESS_HOURS_KEY) as { from?: unknown; until?: unknown } | undefined
+  return {
+    businessHours: shiftFromRow(hours?.from, hours?.until) ?? DEFAULT_BUSINESS_HOURS,
+    guaranteeRules: parseGuaranteeRules(byKey.get(GUARANTEE_RULES_KEY)) ?? DEFAULT_GUARANTEE_RULES,
+  }
+}
+
+export async function setShiftRules(rules: ShiftRules): Promise<void> {
+  if (!isValidShift(rules.businessHours)) {
+    throw new Error('営業時間は、終わりが始まりより後になるようにしてください')
+  }
+  const table = parseGuaranteeRules(rules.guaranteeRules)
+  if (!table) throw new Error('待機保証の規定を1行以上入れてください')
+  const now = new Date().toISOString()
+  const { error } = await supabase.from('store_settings').upsert(
+    [
+      { key: BUSINESS_HOURS_KEY, value: rules.businessHours, updated_at: now },
+      { key: GUARANTEE_RULES_KEY, value: table, updated_at: now },
+    ],
+    { onConflict: 'key' },
+  )
+  if (error) throw error
+}
+
+// その営業日にそのキャストがいくら待機保証を受け取るか。
+//   ・管理→キャストで設定した額（guarantee_amount）が基本。0 なら保証なし
+//   ・受付日でその日だけ勤務時間帯を変えてあれば、その時間数を規定表に当てて計算する
+//     （3時間の人が2時間だけ出た日は20万、2時間の人が3時間出た日は50万）
+export function guaranteeForDay(
+  cast: { guarantee_amount: number },
+  dayShift: CastShift | null | undefined,
+  rules: ShiftRules,
+): number {
+  if (cast.guarantee_amount <= 0) return 0
+  if (!dayShift) return cast.guarantee_amount
+  return guaranteeForHours(rules.guaranteeRules, shiftHours(dayShift))
+}
+
+// 期間内の「その日だけの勤務時間帯」。キー は `${business_date}|${cast_id}`
+async function loadDayShifts(fromDate?: string, toDate?: string): Promise<Map<string, CastShift>> {
+  let q = supabase
+    .from('reservation_day_casts')
+    .select('business_date, cast_id, shift_from, shift_until')
+    .not('shift_from', 'is', null)
+  if (fromDate) q = q.gte('business_date', fromDate)
+  if (toDate) q = q.lte('business_date', toDate)
+  const { data, error } = await q
+  if (error) throw error
+  const out = new Map<string, CastShift>()
+  for (const r of data || []) {
+    const s = shiftFromRow(r.shift_from, r.shift_until)
+    if (s) out.set(`${r.business_date}|${r.cast_id}`, s)
+  }
+  return out
 }
 
 // ============================================================

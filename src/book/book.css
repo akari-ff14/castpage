@@ -385,6 +385,11 @@ body {
   border-bottom: 1px dotted var(--bk-rule-lit);
 }
 
+/* キャストの勤務時間外。そもそも灯のある場所ではないので、時刻ごと薄くする */
+.bk-cell-off {
+  opacity: 0.45;
+}
+
 /* 満席。灯は消えている。色を足さずに、時刻に線を引いて示す */
 .bk-cell-confirmed .bk-cell-time {
   text-decoration: line-through;

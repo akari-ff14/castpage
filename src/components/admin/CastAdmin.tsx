@@ -2,14 +2,26 @@ import { useCallback, useEffect, useState } from 'react'
 import {
   addCast,
   adminUnbindCast,
+  getShiftRules,
   listAllCasts,
   regenerateInviteCode,
   updateCast,
   type CastAdminRow,
   type CastRole,
+  type ShiftRules,
 } from '../../lib/db'
-import { fmtCurrency } from '../../lib/format'
+import { fmtCurrency, fmtGil } from '../../lib/format'
+import {
+  DEFAULT_BUSINESS_HOURS,
+  DEFAULT_GUARANTEE_RULES,
+  fmtHours,
+  fmtShift,
+  guaranteeForHours,
+  shiftHours,
+  type CastShift,
+} from '../../lib/shift'
 import Modal from '../Modal'
+import ShiftSelect from '../ShiftSelect'
 import { useToast } from '../Toast'
 import './AdminCommon.css'
 
@@ -22,9 +34,10 @@ interface FormState {
   active: boolean
   note: string
   guarantee_amount: number  // 待機保証額（0 = なし）
+  shift: CastShift | null   // 既定の勤務時間帯。null = 店の営業時間どおり
 }
 
-const emptyForm = (): FormState => ({ name: '', role: 'cast', attribute: '', is_admin: false, active: true, note: '', guarantee_amount: 0 })
+const emptyForm = (): FormState => ({ name: '', role: 'cast', attribute: '', is_admin: false, active: true, note: '', guarantee_amount: 0, shift: null })
 
 export default function CastAdmin() {
   const [list, setList] = useState<CastAdminRow[]>([])
@@ -33,6 +46,11 @@ export default function CastAdmin() {
   const [formOpen, setFormOpen] = useState(false)
   const [form, setForm] = useState<FormState>(emptyForm())
   const [busy, setBusy] = useState(false)
+  // 営業時間と待機保証の規定表。勤務時間帯から規定額を出すのに使う（管理→店舗設定で編集）
+  const [rules, setRules] = useState<ShiftRules>({
+    businessHours: DEFAULT_BUSINESS_HOURS,
+    guaranteeRules: DEFAULT_GUARANTEE_RULES,
+  })
   const toast = useToast()
 
   const load = useCallback(async () => {
@@ -49,10 +67,16 @@ export default function CastAdmin() {
 
   useEffect(() => {
     load()
+    getShiftRules().then(setRules).catch(() => {})
   }, [load])
 
+  // 勤務時間帯（null なら営業時間）→ 時間数 → 規定表の額
+  const hoursOf = (shift: CastShift | null) => shiftHours(shift ?? rules.businessHours)
+  const standardAmount = (shift: CastShift | null) => guaranteeForHours(rules.guaranteeRules, hoursOf(shift))
+
   function openAdd() {
-    setForm(emptyForm())
+    // 新しいキャストは営業時間どおりで、待機保証はその時間数の規定額から始める
+    setForm({ ...emptyForm(), guarantee_amount: standardAmount(null) })
     setFormOpen(true)
   }
 
@@ -66,8 +90,15 @@ export default function CastAdmin() {
       active: c.active,
       note: c.note,
       guarantee_amount: c.guarantee_amount,
+      shift: c.shift,
     })
     setFormOpen(true)
+  }
+
+  // 勤務時間帯を変えたら、待機保証もその時間数の規定額に合わせる。
+  // 規定と違う額にしたいときは、そのあと待機保証の欄を直せばよい
+  function changeShift(shift: CastShift | null) {
+    setForm((f) => ({ ...f, shift, guarantee_amount: standardAmount(shift) }))
   }
 
   async function save() {
@@ -88,6 +119,8 @@ export default function CastAdmin() {
         active: form.active,
         note: form.note,
         guarantee_amount: staff ? 0 : Math.max(0, Number(form.guarantee_amount) || 0),
+        // 勤務時間帯も接客する人だけのもの
+        shift: staff ? null : form.shift,
       }
       if (form.id) {
         await updateCast(form.id, common)
@@ -190,9 +223,17 @@ export default function CastAdmin() {
                     : <span className="muted">未設定（募集文に出ません）</span>}
                 </div>
                 <div className="admin-card-meta">
+                  勤務: {c.shift
+                    ? <>{fmtShift(c.shift)}（{fmtHours(shiftHours(c.shift))}）</>
+                    : <span className="muted">営業時間どおり（{fmtShift(rules.businessHours)}・{fmtHours(shiftHours(rules.businessHours))}）</span>}
+                </div>
+                <div className="admin-card-meta">
                   待機保証: {c.guarantee_amount > 0
                     ? <span className="c-gold">{fmtCurrency(c.guarantee_amount)}</span>
                     : <span className="muted">なし</span>}
+                  {c.guarantee_amount > 0 && c.guarantee_amount !== standardAmount(c.shift) && (
+                    <span className="muted">（規定は {fmtGil(standardAmount(c.shift))}）</span>
+                  )}
                 </div>
               </>
             )}
@@ -272,6 +313,27 @@ export default function CastAdmin() {
           )}
           {form.role === 'cast' && (
             <div className="form-group">
+              <label className="form-label">勤務時間帯</label>
+              <label className="checkbox-row" style={{ marginTop: 0 }}>
+                <input
+                  type="checkbox"
+                  checked={form.shift === null}
+                  onChange={(e) => changeShift(e.target.checked ? null : { ...rules.businessHours })}
+                />
+                営業時間どおり（{fmtShift(rules.businessHours)}）
+              </label>
+              {form.shift && (
+                <ShiftSelect value={form.shift} onChange={changeShift} ariaLabel="勤務時間帯" />
+              )}
+              <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
+                {form.shift
+                  ? `${fmtHours(hoursOf(form.shift))}勤務。この時間に入らない枠は、お客様の予約ページで「時間外」になり、受付ボードにも出勤時間として出ます。`
+                  : '受付日の全部の枠に出ます。「22時から24時まで」のように短く入る人はチェックを外して時間を選んでください。'}
+              </p>
+            </div>
+          )}
+          {form.role === 'cast' && (
+            <div className="form-group">
               <label className="form-label">待機保証（円 / 営業日）</label>
               <input
                 type="number"
@@ -285,8 +347,16 @@ export default function CastAdmin() {
                 placeholder="0 = 保証なし"
               />
               <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
-                0 で保証なし（例: 500000）。その営業日に1件でも記録があると給与に加算されます。
-                給与 = 待機保証 + 席料50% + オプション全額
+                規定表では {fmtHours(hoursOf(form.shift))} → {fmtGil(standardAmount(form.shift))}
+                （{rules.guaranteeRules
+                  .slice()
+                  .sort((a, b) => b.hours - a.hours)
+                  .map((r) => `${fmtHours(r.hours)} ${fmtGil(r.amount)}`)
+                  .join(' ／ ')}）。
+                勤務時間帯を変えると自動でこの額になります。違う額にするときはここを直してください。0 で保証なし。
+              </p>
+              <p className="muted" style={{ fontSize: '0.85em', margin: '6px 2px 0' }}>
+                その営業日に1件でも記録があると給与に加算されます。給与 = 待機保証 + 席料50% + オプション全額
               </p>
             </div>
           )}
