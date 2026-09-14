@@ -104,7 +104,8 @@ export default function RevenueTab() {
         </div>
       </div>
       <p className="muted small rev-guarantee-note">
-        ※給与 = 待機保証 + 席料50% + オプション全額（待機保証はキャストごとに管理→キャストで設定。既定は0）
+        ※給与 = 待機保証 + 席料50% + オプション全額（待機保証はキャストごとに管理→キャストで設定。既定は0。
+        受付日でその日だけ勤務時間を変えた日は、店舗設定の規定表で計算）
       </p>
 
       {data.casts.length === 0 ? (
