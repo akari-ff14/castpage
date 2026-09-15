@@ -173,7 +173,7 @@ export default function BookApp() {
       {onMyPage ? <MyReservations /> : <SlotPicker />}
 
       <footer className="bk-footer">
-        <p>お申し込みは1時間の枠でお受けしています。</p>
+        <p>お時間は30分か60分からお選びいただけます（1枠につき1組）。</p>
         <p>同じ日にお申し込みいただけるのは1件までです。</p>
       </footer>
     </div>
