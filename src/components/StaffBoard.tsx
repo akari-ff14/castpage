@@ -545,16 +545,23 @@ function CustomerCheck() {
       return
     }
     setChecking(true)
+    // 打ち直したあとに前の問い合わせが返ってきても、その結果は捨てる
+    // （タイマーを止めるだけでは、すでに飛んでいる問い合わせは止まらない）
+    let stale = false
     const t = setTimeout(async () => {
       const [b, s] = await Promise.all([
         db.call<BlMatch[]>('checkBlacklist', q),
         db.call<CustomerSummary>('getCustomerSummary', q),
       ])
+      if (stale) return
       setBl(b.ok ? b.data || [] : [])
       setSummary(s.ok ? s.data : null)
       setChecking(false)
     }, 400)
-    return () => clearTimeout(t)
+    return () => {
+      stale = true
+      clearTimeout(t)
+    }
   }, [name])
 
   const q = name.trim()
@@ -683,8 +690,15 @@ function StartForCastModal({
   onClose: () => void
   onStarted: () => void
 }) {
-  // その人に付いている、まだ接客に変わっていない予約。あればそこから始める
-  const presetRes = row.reservations.find((r) => !r.converted) ?? null
+  // その人に付いている、まだ接客に変わっていない予約。あればそこから始める。
+  // 21:00 に来なかった方の予約が残ったまま 22:10 の方が来る、ということがあるので、
+  // まだ終わっていない予約のうち一番早いものを優先し、無ければ残っている最初のもの
+  const pending = row.reservations.filter((r) => !r.converted)
+  const nowMs = Date.now()
+  const presetRes =
+    pending.find((r) => new Date(r.予約日時).getTime() + ((r.予約時間 || 60) + 10) * 60 * 1000 > nowMs) ??
+    pending[0] ??
+    null
 
   const [room, setRoom] = useState(rooms.find((r) => !r.using)?.name || '')
   const [customer, setCustomer] = useState(presetRes?.顧客名 || '')
@@ -778,7 +792,12 @@ function StartForCastModal({
           type="text"
           className="form-input"
           value={customer}
-          onChange={(e) => setCustomer(e.target.value)}
+          onChange={(e) => {
+            setCustomer(e.target.value)
+            // お名前を変えたら出禁の警告は無効。そのまま「それでも開始」で
+            // 別の名前のチェックを飛ばせないようにする
+            setBl([])
+          }}
           placeholder="複数名は 、 か , で区切ります"
           autoComplete="off"
         />
