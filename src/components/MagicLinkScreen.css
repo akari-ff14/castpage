@@ -152,10 +152,11 @@
 }
 
 /* ── Cloudflare の確認 ── */
-/* 何も表示していない間は無いものとして扱い、フォームの間隔に穴を空けない。
-   描かれる前は空、描かれたあとも確認が要るときだけ iframe が入る */
-.ml-captcha:empty,
-.ml-captcha:not(:has(iframe)) {
+/* 描かれるまでは無いものとして扱い、フォームの間隔に穴を空けない。
+   描かれたあとは Turnstile が中身を閉じた shadow root に入れるので、
+   :has(iframe) などで「表示中か」を外から判定してはいけない。
+   表示が要らないときは高さ 0 で収まる */
+.ml-captcha:empty {
   display: none;
 }
 
