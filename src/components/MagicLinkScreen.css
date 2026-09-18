@@ -150,3 +150,16 @@
   color: var(--text-dim);
   margin: 0;
 }
+
+/* ── Cloudflare の確認 ── */
+/* 何も表示していない間は無いものとして扱い、フォームの間隔に穴を空けない。
+   描かれる前は空、描かれたあとも確認が要るときだけ iframe が入る */
+.ml-captcha:empty,
+.ml-captcha:not(:has(iframe)) {
+  display: none;
+}
+
+.ml-captcha {
+  display: flex;
+  justify-content: center;
+}

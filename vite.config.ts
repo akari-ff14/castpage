@@ -9,8 +9,9 @@ import react from '@vitejs/plugin-react'
 //   book/index.html → お客様用の予約ページ        /castpage/book/
 //
 // ビルドを分けているのは見た目の都合ではなく、お客様に配るファイルの中に
-// 売上や顧客リストを扱うコードを一切含めないため。2つは import を共有しない
-// （supabase クライアントだけは同じものを使う）。
+// 売上や顧客リストを扱うコードを一切含めないため。2つは import を共有しない。
+// 例外は lib/turnstile.ts（Cloudflare の確認ウィジェット）だけ。店のデータに
+// 触らない葉のモジュールなので両方から使っている。
 export default defineConfig({
   base: '/castpage/',
   plugins: [react()],

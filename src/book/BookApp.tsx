@@ -15,7 +15,7 @@ import {
   type ServicePrice,
 } from './api'
 import { disablePush, enablePush, getPushState, type PushState } from './push'
-import { isTurnstileEnabled, renderTurnstile, type TurnstileHandle } from './turnstile'
+import { isTurnstileEnabled, renderTurnstile, type TurnstileHandle } from '../lib/turnstile'
 import './book.css'
 
 // 受付日を探す範囲。店は先の日程まで開けることがあるので広めに取る
@@ -286,13 +286,8 @@ function SlotPicker() {
     if (!picked || !isTurnstileEnabled()) return
     const box = captchaBox.current
     if (!box) return
-    let disposed = false
-    renderTurnstile(box, (token) => setCaptcha(token)).then((h) => {
-      if (disposed) h?.remove()
-      else captchaHandle.current = h
-    })
+    captchaHandle.current = renderTurnstile(box, (token) => setCaptcha(token))
     return () => {
-      disposed = true
       captchaHandle.current?.remove()
       captchaHandle.current = null
     }
@@ -329,7 +324,9 @@ function SlotPicker() {
       openedAt.current = 0
       return
     }
-    if (isTurnstileEnabled() && !captcha) {
+    // 確認は動いているのに結果がまだ無い＝確認の途中。少し待って押し直せば通る。
+    // 読み込めなかったときは待っても来ないので、そのまま送ってサーバーの返事を伝える
+    if (captchaHandle.current?.available() && !captcha) {
       setFormErr('確認中です。数秒おいてもう一度お試しください')
       return
     }

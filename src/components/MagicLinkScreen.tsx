@@ -1,5 +1,7 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { getStoredTheme } from '../lib/theme'
+import { isTurnstileEnabled, renderTurnstile, type TurnstileHandle } from '../lib/turnstile'
 import { Mail } from '../icons'
 import './MagicLinkScreen.css'
 
@@ -19,21 +21,57 @@ export default function MagicLinkScreen() {
   const [err, setErr] = useState('')
   const [busy, setBusy] = useState(false)
   const [googleBusy, setGoogleBusy] = useState(false)
+  // Cloudflare の確認結果。Supabase Auth の Captcha protection はプロジェクト全体に
+  // 効くので、予約ページと同じくこれを添えないとメール送信 (/otp) が
+  // "captcha protection: request disallowed" で弾かれる。Google ログインは対象外
+  const [captcha, setCaptcha] = useState('')
+  const captchaBox = useRef<HTMLDivElement | null>(null)
+  const captchaHandle = useRef<TurnstileHandle | null>(null)
+
+  // 確認ウィジェットはフォームを出すたびに描き直す（送信後の画面から戻ったときも）
+  useEffect(() => {
+    if (sent || !isTurnstileEnabled()) return
+    const box = captchaBox.current
+    if (!box) return
+    const theme = getStoredTheme() === 'light' ? 'light' : 'dark'
+    captchaHandle.current = renderTurnstile(box, (token) => setCaptcha(token), theme)
+    return () => {
+      captchaHandle.current?.remove()
+      captchaHandle.current = null
+    }
+  }, [sent])
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (!email.trim()) return
+    // 確認は動いているのに結果がまだ無い＝確認の途中。少し待って押し直せば通る。
+    // 読み込めなかったときは待っても来ないので、そのまま送ってサーバーの返事を伝える
+    if (captchaHandle.current?.available() && !captcha) {
+      setErr('確認中です。数秒おいてもう一度お試しください')
+      return
+    }
     setBusy(true)
     setErr('')
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim(),
       options: {
         emailRedirectTo: window.location.origin + window.location.pathname,
+        captchaToken: captcha || undefined,
       },
     })
     setBusy(false)
-    if (error) setErr(error.message)
-    else setSent(true)
+    // 確認結果は1回きり。成功しても失敗しても取り直す
+    captchaHandle.current?.reset()
+    setCaptcha('')
+    if (!error) {
+      setSent(true)
+      return
+    }
+    setErr(
+      /captcha/i.test(error.message)
+        ? '確認に失敗しました。ページを開き直してもう一度お試しください'
+        : error.message,
+    )
   }
 
   async function signInWithGoogle() {
@@ -119,6 +157,8 @@ export default function MagicLinkScreen() {
           <button type="submit" className="btn-secondary" disabled={busy || googleBusy || !email.trim()}>
             {busy ? '送信中...' : 'ログインリンクを送る'}
           </button>
+          {/* 確認が要るときだけ Cloudflare がここに描く。ふだんは空のまま */}
+          <div ref={captchaBox} className="ml-captcha" />
           <p className="muted ml-hint">
             パスワード不要。届いたメール内のリンクをタップでログインできます。
           </p>
