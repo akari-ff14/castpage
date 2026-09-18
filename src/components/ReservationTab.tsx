@@ -65,16 +65,22 @@ function toLocalInput(iso: string): string {
   return jst.toISOString().slice(0, 19)
 }
 
-// 現在時刻（JST）を "YYYY-MM-DDTHH:mm:ss" で返す。
-// stepSec = 1（秒単位）なら丸めなしで即時対応の時刻をそのまま、
-// それ以外は設定の刻みに丸める（例: 300 = 5分単位、四捨五入）
-function nowJstInput(stepSec: number): string {
-  const jst = new Date(Date.now() + 9 * 60 * 60 * 1000)
+// 実時刻（ms）を JST の "YYYY-MM-DDTHH:mm:ss" で返す。
+// stepSec = 1（秒単位）なら丸めなしでそのまま、それ以外は設定の刻みに丸める（例: 300 = 5分単位）。
+// 現在時刻は四捨五入、キャストが空く時刻は切り上げ（空く前の時刻にならないように）
+function msToJstInput(ms: number, stepSec: number, round: 'nearest' | 'up' = 'nearest'): string {
+  const jst = new Date(ms + 9 * 60 * 60 * 1000)
   if (stepSec > 1) {
     const stepMs = stepSec * 1000
-    jst.setTime(Math.round(jst.getTime() / stepMs) * stepMs)
+    const fn = round === 'up' ? Math.ceil : Math.round
+    jst.setTime(fn(jst.getTime() / stepMs) * stepMs)
   }
   return jst.toISOString().slice(0, 19)
+}
+
+// 現在時刻（JST）を "YYYY-MM-DDTHH:mm:ss" で返す（即時対応の予約用）
+function nowJstInput(stepSec: number): string {
+  return msToJstInput(Date.now(), stepSec)
 }
 
 // 時刻欄のラベル（設定された刻みに応じて変える）
@@ -468,6 +474,21 @@ export default function ReservationTab({
       cancelled: r.キャンセル済,
     })
     setFormOpen(true)
+  }
+
+  // 空き時刻チップ: キャストを選び、予約の追加ならその人が次に受けられる時刻を日時欄にも入れる
+  // （チップに出ている時刻を打ち直さなくて済むように）。
+  // 本日お休み・本日終了の人は今日の時刻が無いのでキャストだけ選ぶ。
+  // 編集のときは入っている日時を動かさない（別の日の予約のキャストだけ替えることがある）
+  function pickCastChip(a: { cast: string; ended: boolean; busyNow: boolean; availMs: number }) {
+    setForm((f) => {
+      if (f.reservation_id || a.ended) return { ...f, castName: a.cast }
+      // チップの時刻は分までしか出ていないので、秒を落としてから刻みに切り上げる
+      // （20:49:37 → 20:49。5分刻みなら 20:50。チップと同じか、その次の刻みになる）
+      const availMinMs = Math.floor(a.availMs / 60000) * 60000
+      const datetime = a.busyNow ? msToJstInput(availMinMs, timeStep, 'up') : nowJstInput(timeStep)
+      return { ...f, castName: a.cast, datetime }
+    })
   }
 
   function updateCustName(i: number, value: string) {
@@ -876,7 +897,8 @@ export default function ReservationTab({
           <div className="res-modal-avail">
             <div className="res-modal-avail-head">
               <Clock size={12} style={{ verticalAlign: '-2px', marginRight: 4 }} />
-              各キャストの次の予約可能時間（タップでキャスト選択）
+              各キャストの次の予約可能時間
+              {form.reservation_id ? '（タップでキャスト選択）' : '（タップでキャストを選び、その時刻を予約日時に入れます）'}
             </div>
             <div className="res-modal-avail-grid">
               {castAvailability.map((a) => (
@@ -884,7 +906,7 @@ export default function ReservationTab({
                   type="button"
                   key={a.cast}
                   className={`res-modal-avail-chip${form.castName === a.cast ? ' active' : ''}${a.ended ? ' is-ended' : ''}`}
-                  onClick={() => setForm((f) => ({ ...f, castName: a.cast }))}
+                  onClick={() => pickCastChip(a)}
                   title={`勤務 ${fmtShift(a.shift)}${a.off ? '（本日お休み）' : a.ended ? '（本日終了）' : a.busyNow ? ` ／ ${a.blockedBy}` : ' ／ 今すぐ対応可能'}`}
                 >
                   <span className="chip-cast">{a.cast}</span>
