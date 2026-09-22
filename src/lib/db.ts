@@ -2317,7 +2317,7 @@ export const RECRUIT_TEMPLATE_KEY = 'recruit_template'
 export const RECRUIT_SHORTEST_TOKEN = '{最短}'
 export const RECRUIT_ATTRS_TOKEN = '{属性}'
 export const DEFAULT_RECRUIT_TEMPLATE =
-  '有料対話店 灯 本日21時から営業！詳細はX@akari_rp_ff14\u3000 最短{最短} 完全個室のみ ＰＴへどうぞ！{属性}'
+  '有料対話店 灯 本日21時から営業！詳細はX@akari_rp_ff14\u3000 最短{最短} ＰＴへどうぞ！{属性}'
 
 export async function getRecruitTemplate(): Promise<string> {
   const { data, error } = await supabase
