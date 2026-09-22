@@ -449,7 +449,7 @@ function GuideMacroCard() {
         <textarea
           id="guide-macro"
           className="form-input store-macro-area"
-          rows={13}
+          rows={15}
           value={text}
           onChange={(e) => setText(e.target.value)}
           spellCheck={false}
