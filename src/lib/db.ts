@@ -17,6 +17,8 @@ import {
   type CastShift,
   type GuaranteeRule,
 } from './shift'
+// 片付けのインターバル。空き時刻の数え方と、DB の reservation_hold_span も同じ値
+import { INTERVAL_MIN } from './availability'
 
 // ============================================================
 // 型定義（旧 AkariApi の戻り値と互換）
@@ -748,10 +750,28 @@ export async function finishSession(payload: {
 // API: 予約 CRUD
 // ============================================================
 
-// 予約の時間帯重複チェック。
-// - 同じキャストの予約と時間帯が重なる → エラー
-// - 同じ顧客（カンマ区切りのいずれかが一致）の予約と時間帯が重なる → エラー
-// キャンセル済み・接客開始済み(converted)の予約は対象外。
+// DB 側の排他制約（同じキャストの時間が重なる予約を1件だけにする）に当たったときの文言。
+// 重複チェックを抜けたあとに入るのは、ほぼ同時に別の予約が入ったときだけ
+const EXCLUSION_VIOLATION = '23P01'
+
+// 変えるときは DB 側（reservation_hold_span と reservations_no_overlap の索引）も作り直すこと
+const INTERVAL_MS = INTERVAL_MIN * 60 * 1000
+
+function reservationWriteError(error: { code?: string; message?: string } | null): Error | null {
+  if (!error) return null
+  if (error.code === EXCLUSION_VIOLATION) {
+    return new Error('ちょうど今、同じ時間に別の予約が入りました。画面を更新してご確認ください')
+  }
+  return new Error(error.message || '予約の保存に失敗しました')
+}
+
+// 予約の時間帯重複チェック。保存する前に、分かる範囲で先に止めるためのもの。
+// - 同じキャストの予約と時間帯が重なる → エラー。片付けの10分も塞がっているものとして見る
+//   （DB の reservations_no_overlap と同じ見方。最後に守っているのは DB のほう）
+// - 同じ顧客（カンマ区切りのいずれかが一致）の予約と時間帯が重なる → エラー。
+//   こちらはお客様が同じ時間に2件入っていないかを見るだけなので、インターバルは足さない
+// キャンセル済み・接客開始済み(converted)・お断りした申込(rejected)、
+// それに allow_overlap（重なってよい行）は対象外。
 // castId が null（フリー＝指名なし）の場合、キャスト重複チェックは行わない（顧客重複のみ）。
 async function assertNoReservationConflict(params: {
   castId: string | null
@@ -773,7 +793,7 @@ async function assertNoReservationConflict(params: {
   const castNames = await loadCastNames()
   const { data, error } = await supabase
     .from('reservations')
-    .select('id, cast_id, customer_name, reserved_at, duration_min, cancelled, converted_at')
+    .select('id, cast_id, customer_name, reserved_at, duration_min, cancelled, converted_at, status, allow_overlap')
     .gte('reserved_at', fromIso)
     .lte('reserved_at', toIso)
   if (error) throw error
@@ -784,18 +804,30 @@ async function assertNoReservationConflict(params: {
   for (const r of data || []) {
     if (params.excludeId && r.id === params.excludeId) continue
     if (r.cancelled || r.converted_at) continue
+    // お断りした申込は枠を空けている（お客様側の判定と同じ絞り方）
+    if (r.status === 'rejected') continue
+    // 重なってよい行として印を付けたもの（DB の制約からも外れている）
+    if (r.allow_overlap) continue
     const rs = floorMin(new Date(r.reserved_at).getTime())
     if (isNaN(rs)) continue
     const re = rs + (Number(r.duration_min) || 60) * 60 * 1000
-    if (!(rs < endMs && startMs < re)) continue  // 重なっていない
+    // 時間そのものが重なっているか（お客様の二重予約はこれで見る）と、
+    // 片付けの10分まで含めて塞がっているか（キャストはこちら。DB の制約と同じ見方）
+    const sameTime = rs < endMs && startMs < re
+    const castBusy = rs < endMs + INTERVAL_MS && startMs < re + INTERVAL_MS
+    if (!castBusy) continue
 
     const castLabel = castNameOf(castNames, r.cast_id) || 'キャスト'
+    const who = `「${r.customer_name || '（顧客未指定）'}」`
     const range = `${fmtDate(r.reserved_at)} ${fmtBizTime(rs)}〜${fmtBizTime(re)}`
     if (params.castId && r.cast_id === params.castId) {
       throw new Error(
-        `予約時間が重複しています: ${castLabel} は ${range} に「${r.customer_name || '（顧客未指定）'}」の予約があります`,
+        sameTime
+          ? `予約時間が重複しています: ${castLabel} は ${range} に${who}の予約があります`
+          : `前後の予約と間が空いていません: ${castLabel} は ${range} に${who}の予約があります（片付けに${INTERVAL_MIN}分必要です）`,
       )
     }
+    if (!sameTime) continue  // 別のキャストなら、間が詰まっているだけなら構わない
     const otherNames = String(r.customer_name || '').split(/[,、]/).map(norm).filter(Boolean)
     if (myNames.some((n) => otherNames.includes(n))) {
       throw new Error(
@@ -843,7 +875,7 @@ export async function addReservation(payload: {
     })
     .select('id, cast_id, customer_name, reservation_price, duration_min, reserved_at, note, cancelled, status, source, created_at, updated_at, room:rooms(name)')
     .single()
-  if (error) throw error
+  if (error) throw reservationWriteError(error)
   // 店内で入れた予約も Discord に流す（帯の色はお客様申込の「予約確定」と分けてある）。
   // キャンセル記録は予約が入ったわけではないので送らない
   if (!payload.cancelled) {
@@ -912,7 +944,7 @@ export async function updateReservation(payload: {
   }
 
   const { error } = await supabase.from('reservations').update(updates).eq('id', payload.reservationId)
-  if (error) throw error
+  if (error) throw reservationWriteError(error)
 }
 
 export async function deleteReservation(reservationId: string): Promise<void> {
