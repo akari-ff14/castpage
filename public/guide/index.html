@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="robots" content="noindex, nofollow">
+<link rel="icon" type="image/svg+xml" href="../favicon.svg">
+<title>灯 新人研修ガイド</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@500;700&family=Noto+Sans+JP:wght@400;500;700&display=swap">
+<style>
+:root{
+  --ground:#f7f1ea; --paper:#fffaf5; --ink:#3b2a22; --muted:#7c665a; --line:#e6d6c7;
+  --accent:#b8322a; --accent-soft:#fbe6e2; --gold:#9c7426; --gold-soft:#f6ecd6;
+  --green:#2f7a52; --green-soft:#e2f2e8;
+  --shadow:0 1px 2px rgba(80,40,20,.06),0 6px 20px rgba(80,40,20,.06);
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --ground:#1d1714; --paper:#27201c; --ink:#f0e5dc; --muted:#b39f92; --line:#3d322b;
+    --accent:#ee7a6d; --accent-soft:#3e2521; --gold:#d9b267; --gold-soft:#3a2f1c;
+    --green:#7ccf9e; --green-soft:#1f3328; --shadow:none;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --ground:#1d1714; --paper:#27201c; --ink:#f0e5dc; --muted:#b39f92; --line:#3d322b;
+  --accent:#ee7a6d; --accent-soft:#3e2521; --gold:#d9b267; --gold-soft:#3a2f1c;
+  --green:#7ccf9e; --green-soft:#1f3328; --shadow:none;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.8 "Noto Sans JP","Hiragino Sans","Yu Gothic",sans-serif;padding-inline:16px;padding-block:32px 64px}
+.wrap{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:48px}
+h1,h2,h3{font-family:"Zen Maru Gothic","Noto Sans JP",sans-serif;text-wrap:balance;margin:0;line-height:1.4}
+h1{font-size:clamp(26px,5vw,34px)}
+h2{font-size:22px;display:flex;align-items:center;gap:10px}
+h2::before{content:"";width:10px;height:10px;border-radius:50%;background:var(--accent);flex:none}
+h3{font-size:17px}
+p{margin:0}
+.eyebrow{font-size:12px;letter-spacing:.14em;color:var(--gold);font-weight:700}
+header{display:flex;flex-direction:column;gap:8px}
+header p{color:var(--muted)}
+section{display:flex;flex-direction:column;gap:18px}
+.muted{color:var(--muted)}
+.small{font-size:13px}
+strong.hl{color:var(--accent)}
+kbd{font:inherit;font-weight:700;font-size:.92em;background:var(--accent-soft);color:var(--accent);border:1px solid var(--line);border-radius:6px;padding:1px 7px;white-space:nowrap}
+
+/* 新ルール */
+.rule{background:var(--paper);border:2px solid var(--accent);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:14px;box-shadow:var(--shadow)}
+.rule-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.seat{border-radius:10px;padding:14px 16px;display:flex;flex-direction:column;gap:2px}
+.seat.vip{background:var(--gold-soft)}
+.seat.garden{background:var(--green-soft)}
+.seat .k{font-size:12px;letter-spacing:.1em;font-weight:700}
+.seat.vip .k{color:var(--gold)} .seat.garden .k{color:var(--green)}
+.seat .v{font-family:"Zen Maru Gothic",sans-serif;font-size:20px;font-weight:700}
+
+/* ポイント3つ */
+.points{display:grid;gap:12px;grid-template-columns:repeat(auto-fit,minmax(230px,1fr))}
+.point{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:16px 18px;display:flex;flex-direction:column;gap:8px}
+.point .n{font-family:"Zen Maru Gothic",sans-serif;color:var(--accent);font-weight:700;font-size:13px;letter-spacing:.08em}
+.aside{font-size:13px;background:var(--ground);border-radius:8px;padding:8px 10px;color:var(--muted)}
+.aside b{color:var(--ink)}
+
+/* 流れ（時系列） */
+.flow{list-style:none;margin:0;padding:0;display:flex;flex-direction:column}
+.flow li{display:grid;grid-template-columns:84px 1fr;gap:14px;padding:12px 0;border-top:1px dashed var(--line)}
+.flow li:first-child{border-top:0}
+.flow .t{font-weight:700;color:var(--gold);font-variant-numeric:tabular-nums;font-size:13px;padding-top:2px}
+.flow .app{display:inline-block;margin-top:4px;font-size:12px;color:var(--accent);font-weight:700}
+.flow .app::before{content:"アプリ ▸ "}
+
+/* スクショ手順 */
+.step{display:flex;flex-direction:column;gap:12px;padding-top:8px}
+.step + .step{border-top:1px solid var(--line);padding-top:28px}
+.step-head{display:flex;gap:12px;align-items:baseline}
+.step-no{flex:none;width:30px;height:30px;border-radius:50%;background:var(--accent);color:#fff;font-weight:700;display:grid;place-items:center;font-size:14px;transform:translateY(4px)}
+figure{margin:0;display:flex;flex-direction:column;gap:6px}
+figure img{display:block;width:100%;height:auto;border-radius:10px;border:1px solid var(--line);box-shadow:var(--shadow);background:#fff}
+figcaption{font-size:12px;color:var(--muted)}
+.tip{background:var(--gold-soft);border-radius:10px;padding:10px 14px;font-size:14px}
+.tip b{color:var(--gold)}
+
+.help{background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.help ul{margin:0;padding-left:1.2em}
+footer{color:var(--muted);font-size:12px}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+<header>
+  <span class="eyebrow">対話店［灯］ ｜ 新人さん向け</span>
+  <h1>新人研修ガイド</h1>
+  <p>はじめての接客で迷わないための、流れとアプリの使い方をまとめました。まずはここだけ読めばOKです。</p>
+</header>
+
+<section aria-labelledby="rule">
+  <div class="rule">
+    <span class="eyebrow" style="color:var(--accent)">新ルール</span>
+    <h2 id="rule">お席の使い方が変わりました</h2>
+    <div class="rule-grid">
+      <div class="seat vip"><span class="k">個室</span><span class="v">すべて VIP</span><span class="small muted">個室へのご案内は VIP 料金になります</span></div>
+      <div class="seat garden"><span class="k">通常</span><span class="v">お庭をご利用</span><span class="small muted">通常のお客様はお庭へご案内します</span></div>
+    </div>
+    <p class="small muted">アプリで「ルーム」を選ぶとき、個室を選ぶと VIP、お庭を選ぶと通常の料金で自動計算されます。</p>
+  </div>
+</section>
+
+<section aria-labelledby="points">
+  <h2 id="points">研修中のポイント 3つ</h2>
+  <div class="points">
+    <div class="point">
+      <span class="n">POINT 1</span>
+      <h3>最初は先輩に同行</h3>
+      <p>基本は <b>はろるど</b>・<b>りの</b> の接客に同行して、流れを見て覚えます。</p>
+      <p class="aside"><b>受付（みかみん）へ：</b>2人の指名が入ったら、お客様に「新人の同行OKか」を確認してください。OKなら同行してもらいます。料金は1人分でOK（新人ちゃんの分はお店側で出します）。</p>
+    </div>
+    <div class="point">
+      <span class="n">POINT 2</span>
+      <h3>指名フリーは新人ちゃんへ</h3>
+      <p>フリーのお客様は新人ちゃんに振ります。やることはシンプル。下の「1回の接客の流れ」どおりに進めればOKです。</p>
+    </div>
+    <div class="point">
+      <span class="n">POINT 3</span>
+      <h3>迷ったらすぐ聞く</h3>
+      <p>ひとりで抱えなくて大丈夫。<b>CWLS</b> か <b>Discord の雑談ch</b> で気軽に聞いてね。</p>
+    </div>
+  </div>
+</section>
+
+<section aria-labelledby="flow">
+  <h2 id="flow">1回の接客の流れ</h2>
+  <ol class="flow">
+    <li><span class="t">受付</span><div>みかみんが受付して、<b>お部屋とキャスト</b>を割り振ります。アプリに予約が入ります。</div></li>
+    <li><span class="t">3分前</span><div>お客様に <b>tell でひとこえ</b> かけてから <b>PT招待</b>。組めたら割り振られたお部屋へご案内。</div></li>
+    <li><span class="t">ご案内後</span><div>アプリで接客を開始します。<br><span class="app">予約の「接客開始」→「応対開始」</span></div></li>
+    <li><span class="t">終了5分前</span><div>お客様に <b>延長のご希望</b> を聞きます。延長するならアプリで ＋。<br><span class="app">延長の「＋」</span></div></li>
+    <li><span class="t">お会計</span><div>どのタイミングでもOK。ただ <b>お見送りの前</b> がいちばんトラブルが少ないです。</div></li>
+    <li><span class="t">時間</span><div>アプリで終了してから、お見送り。<br><span class="app">「終了」→「終了する」</span></div></li>
+  </ol>
+</section>
+
+<section aria-labelledby="app">
+  <h2 id="app">アプリの操作（予約が来てから終わるまで）</h2>
+  <p class="muted small">画面はサンプルです（名前・部屋名・金額は見本）。<strong class="hl">赤い枠</strong>が押すところ／見るところです。</p>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">1</span><h3>ホームで自分の予約を確認</h3></div>
+    <p>ログインすると最初にホームが開きます。「今日の予約（自分）」に、割り振られたお客様・時刻・お部屋が出ます。タップすると予約タブへ移動します。</p>
+    <figure><img src="shots/home.png" alt="ホーム画面。今日の予約（自分）カードに 22:07 Aさん VIP1 が表示されている" width="1180" height="820" loading="lazy"><figcaption>ホーム：「今日の予約（自分）」</figcaption></figure>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">2</span><h3>お部屋にご案内したら <kbd>接客開始</kbd></h3></div>
+    <p>予約タブで、自分の予約カードの <kbd>接客開始</kbd> を押します。<b>PT を組んでお部屋にご案内してから</b> 押してください（押した時刻から時間が数えられます）。</p>
+    <figure><img src="shots/res.png" alt="予約タブ。Aさんの予約カードの右下にある接客開始ボタンが赤枠で囲まれている" width="1180" height="820" loading="lazy"><figcaption>予約タブ：予約カードの「接客開始」</figcaption></figure>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">3</span><h3>中身を確かめて <kbd>応対開始</kbd></h3></div>
+    <p>お客様の名前・ルーム・予定時間は予約から自動で入っています。合っていれば一番下の <kbd>応対開始</kbd> を押すだけ。</p>
+    <div class="tip"><b>ここだけ確認：</b>ルームが案内したお部屋になっているか。個室なら「VIP」、お庭なら「通常」と料金の横に出ます。お連れ様がいるときは名前欄の ＋ で人数を足します（料金は人数分になります）。</div>
+    <figure><img src="shots/start.png" alt="接客開始フォーム。お客様名 Aさん、ルーム VIP1、予定時間 1時間が入っており、応対開始ボタンが赤枠で囲まれている" width="1180" height="820" loading="lazy"><figcaption>接客タブ：予約の内容が入った開始フォーム</figcaption></figure>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">4</span><h3>接客中の画面</h3></div>
+    <p>「応対中」になり、開始時間と <b>終了予定時間</b> が大きく出ます。延長になったら <b>延長の ＋</b> を押すと、終了予定が30分のび、料金も自動で足されます。間違えて押したら − で戻せます。</p>
+    <figure><img src="shots/active.png" alt="応対中の画面。開始時間と終了予定時間、延長とオプションの増減ボタン、終了ボタンがある。延長の行が赤枠で囲まれている" width="1180" height="820" loading="lazy"><figcaption>接客タブ：応対中（延長は ＋ で30分ずつ）</figcaption></figure>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">5</span><h3>終了5分前のお知らせ = 延長を聞く合図</h3></div>
+    <p>終了予定の5分前になると、アプリがお知らせを出します。これが出たら <b>お客様に延長のご希望を聞きましょう</b>。延長なら手順4の ＋、なければそのままお会計・お見送りの準備へ。</p>
+    <figure><img src="shots/remind.png" alt="「もうすぐ終了時刻です」というお知らせのポップアップ" width="1180" height="820" loading="lazy"><figcaption>「もうすぐ終了時刻です」のお知らせ</figcaption></figure>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">6</span><h3>時間が来たら <kbd>終了</kbd> → <kbd>終了する</kbd></h3></div>
+    <p>応対中画面の下の <kbd>終了</kbd> を押すと確認が出ます。気になったことがあれば備考にひとこと残して、<kbd>終了する</kbd>。そのあとお見送りです。</p>
+    <figure><img src="shots/finish.png" alt="「応対を終了しますか？」の確認。備考欄と、キャンセル・終了するボタン。終了するが赤枠で囲まれている" width="1180" height="820" loading="lazy"><figcaption>終了の確認</figcaption></figure>
+  </div>
+
+  <div class="step">
+    <div class="step-head"><span class="step-no">7</span><h3>空のフォームに戻ったら完了</h3></div>
+    <p>終了すると、接客タブは次の接客を始める空のフォームに戻ります。これで記録は完了。売上は自動で入るので、ほかに入力することはありません。</p>
+    <figure><img src="shots/done.png" alt="終了後の接客タブ。お客様名が空欄の開始フォームに戻っている" width="1180" height="820" loading="lazy"><figcaption>終了後：次の接客を始められる状態</figcaption></figure>
+  </div>
+</section>
+
+<section aria-labelledby="help">
+  <div class="help">
+    <h2 id="help">こまったときは</h2>
+    <p><b>CWLS</b> か <b>Discord の雑談ch</b> で聞いてね。こんなときも遠慮なく：</p>
+    <ul>
+      <li>予約カードに「接客開始」ボタンが出てこない</li>
+      <li>押し間違えた・開始や終了を押し忘れた（あとから履歴で直せます）</li>
+      <li>お客様の人数やお部屋が予約と違った</li>
+    </ul>
+  </div>
+</section>
+
+<footer>対話店［灯］ 新人研修ガイド ｜ 2026年9月版</footer>
+</div>
+</body>
+</html>
